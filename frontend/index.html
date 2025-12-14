@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Digital Panel Inspection</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<h2>Digital Panel Inspection</h2>
+
+<!-- BOM Upload -->
+<input type="file" id="bomFile" />
+<button onclick="uploadBOM()">Upload & Generate Checklist</button>
+
+<hr/>
+
+<!-- Checklist Table -->
+<table>
+  <thead>
+    <tr>
+      <th>FIND NUMBER</th>
+      <th>PART DESCRIPTION</th>
+      <th>STATUS</th>
+      <th>REMARKS</th>
+    </tr>
+  </thead>
+  <tbody id="checklistBody"></tbody>
+</table>
+
+<h3>Selected Component Details</h3>
+
+<table id="detailsTable" border="1">
+  <tbody></tbody>
+</table>
+
+<hr/>
+
+<script src="script.js"></script>
+</body>
+</html>
+
