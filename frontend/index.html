@@ -2,64 +2,148 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Digital Panel Inspection</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
-
-<h2>Digital Panel Inspection</h2>
-
-<!-- BOM Upload -->
-<input type="file" id="bomFile" />
-<button onclick="uploadBOM()">Upload & Generate Checklist</button>
-
-<hr/>
-
-<!-- Checklist -->
-<table>
-  <thead>
-    <tr>
-      <th>FIND NUMBER</th>
-      <th>PART DESCRIPTION</th>
-      <th>STATUS</th>
-      <th>REMARKS</th>
-    </tr>
-  </thead>
-  <tbody id="checklistBody"></tbody>
-</table>
-
-<hr/>
-
-<h3>Selected Component Details</h3>
-<table id="detailsTable">
-  <tbody></tbody>
-</table>
-
-<hr/>
-
-<h3>Upload GA Drawing</h3>
-<input type="file" id="gaFile" />
-<button onclick="uploadGA()">Upload GA</button>
-
-<hr/>
-
-<h3>GA Viewer</h3>
-
-<div id="gaControls">
-  <button onclick="prevPage()">◀ Prev</button>
-  <span id="pageInfo"></span>
-  <button onclick="nextPage()">Next ▶</button>
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <h1>🔍 Digital Panel Inspection</h1>
+  </div>
+  <div class="header-right">
+    <button class="header-btn" onclick="exportChecklistPDF()">📄 Export Checklist (PDF)</button>
+  </div>
 </div>
 
-<div id="pdfContainer">
-  <canvas id="pdfCanvas"></canvas>
-  <div id="highlightLayer"></div>
+<div class="main-container">
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+    <!-- BOM UPLOAD CARD -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-icon">📋</span>
+        <span class="card-title">BOM Checklist</span>
+      </div>
+      <div class="card-body">
+        <div class="file-input-wrapper">
+          <input type="file" id="bomFile" accept=".pdf">
+          <label for="bomFile" class="file-label">Choose File</label>
+          <span id="bomFileName" class="file-name">No file chosen</span>
+        </div>
+        <button id="bomUploadBtn" onclick="uploadBOM()" class="btn-primary">
+          📤 Upload & Generate Checklist
+        </button>
+      </div>
+    </div>
+
+    <!-- CHECKLIST TABLE -->
+    <div class="card checklist-card">
+      <div class="checklist-header">
+        <div class="checklist-stats">
+          <span class="stat-item stat-ok">✓ <span id="okCount">0</span> OK</span>
+          <span class="stat-item stat-ng">✗ <span id="ngCount">0</span> NG</span>
+          <span class="stat-item stat-total">📊 <span id="totalCount">0</span> Total</span>
+        </div>
+      </div>
+      <div class="table-container">
+        <table class="checklist-table">
+          <thead>
+            <tr>
+              <th>FIND</th>
+              <th>PART DESCRIPTION</th>
+              <th>STATUS</th>
+              <th>REMARKS</th>
+            </tr>
+          </thead>
+          <tbody id="checklistBody">
+            <tr>
+              <td colspan="4" class="empty-state">
+                📋 Upload BOM to generate checklist
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <!-- DETAILS CARD -->
+    <div class="card details-card">
+      <div class="card-header">
+        <span class="card-icon">👤</span>
+        <span class="card-title">Selected Component</span>
+      </div>
+      <div class="details-body">
+        <table id="detailsTable">
+          <tbody>
+            <tr>
+              <td colspan="2" class="empty-state">
+                👆 Select a component from checklist
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GA VIEWER CARD -->
+    <div class="card ga-card">
+      <div class="card-header">
+        <span class="card-icon">🔍</span>
+        <span class="card-title">GA Viewer</span>
+      </div>
+      <div class="ga-upload-section">
+        <div class="file-input-wrapper">
+          <input type="file" id="gaFile" accept=".pdf">
+          <label for="gaFile" class="file-label">Choose File</label>
+          <span id="gaFileName" class="file-name">No file chosen</span>
+        </div>
+        <button onclick="uploadGA()" class="btn-primary">
+          📤 Upload & Process GA
+        </button>
+      </div>
+      
+      <div class="ga-controls">
+        <button onclick="prevPage()" class="ctrl-btn">◀ Prev</button>
+        <span id="pageInfo" class="page-info">No GA loaded</span>
+        <button onclick="nextPage()" class="ctrl-btn">Next ▶</button>
+        <span class="divider">|</span>
+        <button onclick="zoomOut()" class="ctrl-btn">🔍−</button>
+        <button onclick="zoomIn()" class="ctrl-btn">🔍+</button>
+        <button onclick="fitToPage()" class="ctrl-btn">⊡ Fit</button>
+      </div>
+
+      <div id="gaContainer">
+        <div id="gaInner">
+          <img id="gaImage" />
+          <div id="highlightLayer"></div>
+        </div>
+        <div id="gaPlaceholder" class="ga-placeholder">
+          📄 Upload and process GA to view drawing
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- PDF.js -->
-<script src="pdfjs/pdf.js"></script>
-<script src="ga_mapping.js"></script>
+<!-- PROGRESS MODAL -->
+<div id="progressModal" class="modal">
+  <div class="modal-content">
+    <h3>⚙️ Processing GA</h3>
+    <div class="spinner"></div>
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progressBar">0%</div>
+    </div>
+    <div id="progressMessage" class="progress-message"></div>
+  </div>
+</div>
+
 <script src="script.js"></script>
-
 </body>
 </html>

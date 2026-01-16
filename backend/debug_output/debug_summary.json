@@ -1,0 +1,33 @@
+{
+  "pdf_path": "ga/CCTV_GA.pdf",
+  "total_pages": 2,
+  "pages": [
+    {
+      "page": 1,
+      "pil": {
+        "width": 4963,
+        "height": 3509,
+        "mode": "RGB"
+      },
+      "opencv": {
+        "width": 4963,
+        "height": 3509
+      },
+      "match": true
+    },
+    {
+      "page": 2,
+      "pil": {
+        "width": 4963,
+        "height": 3509,
+        "mode": "RGB"
+      },
+      "opencv": {
+        "width": 4963,
+        "height": 3509
+      },
+      "match": true
+    }
+  ],
+  "total_balloons": 11
+}

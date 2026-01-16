@@ -1,171 +1,376 @@
 const API = "http://localhost:8000";
+
 let checklistData = [];
+let balloonMapping = {};
 
-/* =========================
-   PDF.js Setup
-   ========================= */
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "pdfjs/pdf.worker.js";
-
-let pdfDoc = null;
 let currentPage = 1;
-let scale = 1.3;
+let totalPages = 0;
+let currentScale = 1;
 let gaLoaded = false;
-let currentViewport = null;
 
-/* =========================
-   BOM Upload
-   ========================= */
-async function uploadBOM() {
-  const fileInput = document.getElementById("bomFile");
-  if (!fileInput.files.length) return alert("Select BOM");
+let imgW = 0;
+let imgH = 0;
 
-  const file = fileInput.files[0];
-  const formData = new FormData();
-  formData.append("file", file);
+/* ================= EXPORT CHECKLIST AS PDF ================= */
+function exportChecklistPDF() {
+  if (!checklistData || checklistData.length === 0) {
+    alert("No checklist data to export. Please upload and process BOM first.");
+    return;
+  }
 
-  await fetch(`${API}/upload/bom`, {
-    method: "POST",
-    body: formData
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+
+  // Title
+  doc.setFontSize(18);
+  doc.setTextColor(102, 126, 234);
+  doc.text('Digital Panel Inspection - Checklist Report', 15, 20);
+
+  // Date and stats
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  const today = new Date().toLocaleDateString();
+  doc.text(`Export Date: ${today}`, 15, 28);
+
+  const okCount = checklistData.filter(item => item.status === "OK").length;
+  const ngCount = checklistData.filter(item => item.status === "NOT OK").length;
+  const totalCount = checklistData.length;
+
+  doc.text(`Total Items: ${totalCount} | OK: ${okCount} | NOT OK: ${ngCount}`, 15, 34);
+
+  // Prepare table data
+  const tableData = checklistData.map(item => [
+    item["FIND NUMBER"] || "",
+    item["PART DESCRIPTION"] || "",
+    item.status || "-",
+    item.remarks || ""
+  ]);
+
+  // Create table
+  doc.autoTable({
+    startY: 40,
+    head: [['FIND NUMBER', 'PART DESCRIPTION', 'STATUS', 'REMARKS']],
+    body: tableData,
+    theme: 'striped',
+    headStyles: {
+      fillColor: [102, 126, 234],
+      textColor: 255,
+      fontStyle: 'bold',
+      halign: 'left'
+    },
+    columnStyles: {
+      0: { cellWidth: 30 },
+      1: { cellWidth: 100 },
+      2: { cellWidth: 25, halign: 'center' },
+      3: { cellWidth: 'auto' }
+    },
+    styles: {
+      fontSize: 9,
+      cellPadding: 4,
+      overflow: 'linebreak'
+    },
+    alternateRowStyles: {
+      fillColor: [245, 247, 250]
+    },
+    didParseCell: function(data) {
+      // Color code status column
+      if (data.column.index === 2 && data.section === 'body') {
+        const status = data.cell.raw;
+        if (status === 'OK') {
+          data.cell.styles.textColor = [16, 185, 129]; // Green
+          data.cell.styles.fontStyle = 'bold';
+        } else if (status === 'NOT OK') {
+          data.cell.styles.textColor = [239, 68, 68]; // Red
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
+    }
   });
 
-  const res = await fetch(
-    `${API}/process/bom?filename=${file.name}`,
-    { method: "POST" }
-  );
+  // Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(
+      `Page ${i} of ${pageCount}`,
+      doc.internal.pageSize.width / 2,
+      doc.internal.pageSize.height - 10,
+      { align: 'center' }
+    );
+  }
 
-  checklistData = await res.json();
-  renderChecklist();
+  // Save PDF
+  doc.save(`checklist_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
-/* =========================
-   Render Checklist
-   ========================= */
+/* ================= EXPORT CHECKLIST AS CSV (BACKUP) ================= */
+/* ================= EXPORT CHECKLIST AS CSV (BACKUP) ================= */
+function exportChecklistCSV() {
+  if (!checklistData || checklistData.length === 0) {
+    alert("No checklist data to export. Please upload and process BOM first.");
+    return;
+  }
+
+  // Create CSV content
+  let csvContent = "FIND NUMBER,PART DESCRIPTION,STATUS,REMARKS\n";
+  
+  checklistData.forEach(item => {
+    const findNumber = item["FIND NUMBER"] || "";
+    const partDesc = (item["PART DESCRIPTION"] || "").replace(/,/g, ";"); // Replace commas
+    const status = item.status || "";
+    const remarks = (item.remarks || "").replace(/,/g, ";"); // Replace commas
+    
+    csvContent += `${findNumber},${partDesc},${status},${remarks}\n`;
+  });
+
+  // Create blob and download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute("href", url);
+  link.setAttribute("download", `checklist_export_${new Date().toISOString().slice(0,10)}.csv`);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/* ================= FILE NAME DISPLAY ================= */
+document.getElementById("bomFile").addEventListener("change", function(e) {
+  const fileName = e.target.files[0]?.name || "No file chosen";
+  document.getElementById("bomFileName").textContent = fileName;
+});
+
+document.getElementById("gaFile").addEventListener("change", function(e) {
+  const fileName = e.target.files[0]?.name || "No file chosen";
+  document.getElementById("gaFileName").textContent = fileName;
+});
+
+/* ================= BOM ================= */
+async function uploadBOM() {
+  const file = document.getElementById("bomFile").files[0];
+  if (!file) return alert("Select BOM file");
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  await fetch(`${API}/upload/bom`, { method: "POST", body: fd });
+  const r = await fetch(`${API}/process/bom?filename=${file.name}`, { method: "POST" });
+  checklistData = await r.json();
+  renderChecklist();
+  updateStats();
+}
+
+/* ================= CHECKLIST ================= */
 function renderChecklist() {
-  const tbody = document.getElementById("checklistBody");
-  tbody.innerHTML = "";
+  const body = document.getElementById("checklistBody");
+  body.innerHTML = "";
 
   checklistData.forEach((item, index) => {
-    const row = document.createElement("tr");
-    row.style.cursor = "pointer";
-
-    row.innerHTML = `
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
       <td>${item["FIND NUMBER"]}</td>
       <td>${item["PART DESCRIPTION"]}</td>
       <td>
-        <select onchange="checklistData[${index}].STATUS=this.value">
-          <option value="">--Select--</option>
+        <select class="status-select" data-index="${index}">
+          <option value="">-</option>
           <option value="OK">OK</option>
           <option value="NOT OK">NOT OK</option>
         </select>
       </td>
       <td>
-        <input oninput="checklistData[${index}].REMARKS=this.value" />
+        <input type="text" class="remarks-input" data-index="${index}" placeholder="Enter remarks...">
       </td>
     `;
 
-    row.onclick = () => loadDetails(item["FIND NUMBER"]);
-    tbody.appendChild(row);
+    tr.onclick = (e) => {
+      if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+
+      document.querySelectorAll("#checklistBody tr")
+        .forEach(r => r.classList.remove("selected"));
+      tr.classList.add("selected");
+
+      loadDetails(item["FIND NUMBER"]);
+    };
+
+    body.appendChild(tr);
+  });
+
+  document.querySelectorAll(".status-select").forEach(s => {
+    s.addEventListener("change", e => {
+      checklistData[e.target.dataset.index].status = e.target.value;
+      updateStats();
+    });
+  });
+
+  document.querySelectorAll(".remarks-input").forEach(i => {
+    i.addEventListener("input", e => {
+      checklistData[e.target.dataset.index].remarks = e.target.value;
+    });
   });
 }
 
-/* =========================
-   Load BOM Details + GA Sync
-   ========================= */
+/* ================= STATS ================= */
+function updateStats() {
+  const okCount = checklistData.filter(item => item.status === "OK").length;
+  const ngCount = checklistData.filter(item => item.status === "NOT OK").length;
+  const totalCount = checklistData.length;
+
+  document.getElementById("okCount").textContent = okCount;
+  document.getElementById("ngCount").textContent = ngCount;
+  document.getElementById("totalCount").textContent = totalCount;
+}
+
+/* ================= DETAILS + GA ================= */
 async function loadDetails(findNumber) {
-  const res = await fetch(`${API}/bom/details/${findNumber}`);
-  const data = await res.json();
 
-  const tbody = document.querySelector("#detailsTable tbody");
-  tbody.innerHTML = "";
+  /* ---------- DETAILS ---------- */
+  const detailsBody = document.querySelector("#detailsTable tbody");
+  detailsBody.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
 
-  for (const key in data) {
-    tbody.innerHTML += `
-      <tr>
-        <td><b>${key}</b></td>
-        <td>${data[key]}</td>
-      </tr>
-    `;
+  try {
+    const r = await fetch(`${API}/bom/details/${encodeURIComponent(findNumber)}`);
+    const d = await r.json();
+    detailsBody.innerHTML = "";
+
+    if (!d || Object.keys(d).length === 0) {
+      detailsBody.innerHTML = `<tr><td colspan="2" class="empty-state">No details found</td></tr>`;
+    } else {
+      Object.entries(d).forEach(([k, v]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
+        detailsBody.appendChild(tr);
+      });
+    }
+  } catch {
+    detailsBody.innerHTML = `<tr><td colspan="2" class="empty-state">Error loading details</td></tr>`;
   }
 
-  if (!gaLoaded) {
-    alert("Please upload GA drawing first");
-    return;
-  }
+  /* ---------- GA ---------- */
+  if (!gaLoaded) return;
 
-  const map = GA_MAPPING[findNumber];
-  if (!map) {
-    console.warn(`No GA mapping for FIND NUMBER ${findNumber}`);
-    return;
-  }
+  const balloon = balloonMapping[findNumber];
+  if (!balloon) return;
 
-  currentPage = map.page;
+  currentPage = balloon.page;
   await renderPage(currentPage);
-  highlightComponent(map);
+  highlightBalloon(balloon);
 }
 
-/* =========================
-   GA Upload
-   ========================= */
+/* ================= GA UPLOAD ================= */
 async function uploadGA() {
-  const fileInput = document.getElementById("gaFile");
-  if (!fileInput.files.length) return alert("Select GA");
+  const file = document.getElementById("gaFile").files[0];
+  if (!file) return alert("Select GA file");
 
-  const formData = new FormData();
-  formData.append("file", fileInput.files[0]);
+  showProgressModal();
 
-  const res = await fetch(`${API}/upload/ga`, {
-    method: "POST",
-    body: formData
-  });
+  const fd = new FormData();
+  fd.append("file", file);
 
-  const data = await res.json();
-  loadGA(data.filename);
+  const r = await fetch(`${API}/upload/ga`, { method: "POST", body: fd });
+  const d = await r.json();
+  pollJob(d.job_id);
 }
 
-/* =========================
-   Load GA PDF
-   ========================= */
-async function loadGA(filename) {
-  const url = `${API}/ga/${filename}`;
-  pdfDoc = await pdfjsLib.getDocument(url).promise;
+/* ================= POLLING ================= */
+function pollJob(id) {
+  const timer = setInterval(async () => {
+    const r = await fetch(`${API}/job/status/${id}`);
+    const s = await r.json();
+    updateProgress(s);
+
+    if (s.status === "complete") {
+      clearInterval(timer);
+      await loadBalloonMapping();
+      await loadGA();
+      hideProgressModal();
+    }
+  }, 2000);
+}
+
+/* ================= BALLOONS ================= */
+async function loadBalloonMapping() {
+  const r = await fetch(`${API}/balloon_results`);
+  const d = await r.json();
+  balloonMapping = {};
+  d.forEach(b => balloonMapping[b.balloon_number] = b);
+}
+
+/* ================= GA ================= */
+async function loadGA() {
+  const r = await fetch(`${API}/ga_pages`);
+  const d = await r.json();
+  totalPages = d.pages;
   currentPage = 1;
   gaLoaded = true;
+  
+  // Hide placeholder
+  const placeholder = document.getElementById("gaPlaceholder");
+  if (placeholder) placeholder.style.display = "none";
+  
   renderPage(currentPage);
 }
 
-/* =========================
-   Render PDF Page
-   ========================= */
-async function renderPage(pageNum) {
-  const page = await pdfDoc.getPage(pageNum);
-  currentViewport = page.getViewport({ scale });
-
-  const canvas = document.getElementById("pdfCanvas");
-  const ctx = canvas.getContext("2d");
-
-  canvas.width = currentViewport.width;
-  canvas.height = currentViewport.height;
-
+/* ================= RENDER PAGE (PRESERVED LOGIC) ================= */
+async function renderPage(p) {
+  const img = document.getElementById("gaImage");
+  const inner = document.getElementById("gaInner");
   const layer = document.getElementById("highlightLayer");
-  layer.style.width = canvas.width + "px";
-  layer.style.height = canvas.height + "px";
   layer.innerHTML = "";
 
-  await page.render({
-    canvasContext: ctx,
-    viewport: currentViewport
-  }).promise;
+  return new Promise(resolve => {
+    img.onload = () => {
+      imgW = img.naturalWidth;
+      imgH = img.naturalHeight;
 
-  document.getElementById("pageInfo").innerText =
-    `Page ${currentPage} / ${pdfDoc.numPages}`;
+      const container = document.getElementById("gaContainer");
+      const containerW = container.clientWidth;
+
+      const padding = 40;
+      currentScale = (containerW - padding) / imgW;
+
+      const w = imgW * currentScale;
+      const h = imgH * currentScale;
+
+      img.style.width = w + "px";
+      img.style.height = h + "px";
+      inner.style.width = w + "px";
+      inner.style.height = h + "px";
+      layer.style.width = w + "px";
+      layer.style.height = h + "px";
+
+      document.getElementById("pageInfo").innerText =
+        `Page ${currentPage} / ${totalPages}`;
+
+      resolve();
+    };
+
+    img.src = `${API}/ga_image/page_${p}.jpg`;
+  });
 }
 
-/* =========================
-   Page Controls
-   ========================= */
+/* ================= HIGHLIGHT (PRESERVED LOGIC) ================= */
+function highlightBalloon(b) {
+  const layer = document.getElementById("highlightLayer");
+  layer.innerHTML = "";
+
+  const box = document.createElement("div");
+  box.className = "highlight-box";
+  box.style.left = b.bbox.x1 * currentScale + "px";
+  box.style.top = b.bbox.y1 * currentScale + "px";
+  box.style.width = (b.bbox.x2 - b.bbox.x1) * currentScale + "px";
+  box.style.height = (b.bbox.y2 - b.bbox.y1) * currentScale + "px";
+
+  layer.appendChild(box);
+}
+
+/* ================= CONTROLS ================= */
 function nextPage() {
-  if (currentPage < pdfDoc.numPages) {
+  if (currentPage < totalPages) {
     currentPage++;
     renderPage(currentPage);
   }
@@ -178,73 +383,52 @@ function prevPage() {
   }
 }
 
-/* =========================
-   PDF → Canvas Conversion
-   ========================= */
-function pdfToCanvasCoords(pdfX, pdfY, pdfW, pdfH, viewport) {
-  const pageHeight = viewport.viewBox[3]; // PDF page height
-
-  // Convert from PDF bottom-left origin to top-left origin
-  const [x1, y1] = viewport.convertToViewportPoint(
-    pdfX,
-    pageHeight - pdfY
-  );
-
-  const [x2, y2] = viewport.convertToViewportPoint(
-    pdfX + pdfW,
-    pageHeight - (pdfY + pdfH)
-  );
-
-  return {
-    x: Math.min(x1, x2),
-    y: Math.min(y1, y2),
-    width: Math.abs(x2 - x1),
-    height: Math.abs(y2 - y1)
-  };
+function zoomIn() {
+  currentScale *= 1.2;
+  updateScale();
 }
 
+function zoomOut() {
+  currentScale *= 0.8;
+  updateScale();
+}
 
-/* =========================
-   Highlight Component (ACCURATE)
-   ========================= */
-function highlightComponent(map) {
-  if (!currentViewport) return;
+function fitToPage() {
+  renderPage(currentPage);
+}
 
+function updateScale() {
+  const img = document.getElementById("gaImage");
+  const inner = document.getElementById("gaInner");
   const layer = document.getElementById("highlightLayer");
-  layer.innerHTML = "";
 
-  const rect = pdfToCanvasCoords(
-    map.pdfX,
-    map.pdfY,
-    map.pdfWidth,
-    map.pdfHeight,
-    currentViewport
-  );
+  const w = imgW * currentScale;
+  const h = imgH * currentScale;
 
-  const div = document.createElement("div");
-  div.className = "highlight-box";
+  img.style.width = w + "px";
+  img.style.height = h + "px";
+  inner.style.width = w + "px";
+  inner.style.height = h + "px";
+  layer.style.width = w + "px";
+  layer.style.height = h + "px";
 
-  div.style.left = rect.x + "px";
-  div.style.top = rect.y + "px";
-  div.style.width = rect.width + "px";
-  div.style.height = rect.height + "px";
-
-  layer.appendChild(div);
+  const selected = document.querySelector("#checklistBody tr.selected");
+  if (selected) {
+    const fn = selected.cells[0].textContent;
+    const b = balloonMapping[fn];
+    if (b) highlightBalloon(b);
+  }
 }
 
-/* =========================
-   TEMP: Click to Capture PDF Coords
-   (Use once, then remove)
-   ========================= */
-document.getElementById("pdfCanvas").onclick = e => {
-  if (!currentViewport) return;
-
-  const rect = pdfCanvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-
-  const [pdfX, pdfY] =
-    currentViewport.convertToPdfPoint(x, y);
-
-  console.log("PDF COORDINATES:", pdfX, pdfY);
-};
+/* ================= MODAL ================= */
+function showProgressModal() {
+  document.getElementById("progressModal").style.display = "flex";
+}
+function hideProgressModal() {
+  document.getElementById("progressModal").style.display = "none";
+}
+function updateProgress(d) {
+  document.getElementById("progressBar").style.width = d.progress + "%";
+  document.getElementById("progressBar").innerText = Math.round(d.progress) + "%";
+  document.getElementById("progressMessage").innerText = d.message || "";
+}
