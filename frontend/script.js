@@ -10,8 +10,8 @@ let gaLoaded = false;
 
 let imgW = 0;
 let imgH = 0;
+let gaPollTimer = null;
 
-/* ================= EXPORT CHECKLIST AS PDF ================= */
 /* ================= EXPORT CHECKLIST AS PDF ================= */
 function exportChecklistPDF() {
   if (!checklistData || checklistData.length === 0) {
@@ -26,156 +26,115 @@ function exportChecklistPDF() {
   }
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+  const doc = new jsPDF("l", "mm", "a4");
 
-  // ===== Title =====
   doc.setFontSize(18);
   doc.setTextColor(102, 126, 234);
-  doc.text('Digital Panel Inspection - Checklist Report', 15, 20);
+  doc.text("Digital Panel Inspection - Checklist Report", 15, 20);
 
-  // ===== Panel No & Date =====
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-
   doc.text(`Panel No: ${panelNo}`, 15, 28);
 
   const today = new Date().toLocaleDateString();
   doc.text(`Export Date: ${today}`, 15, 34);
 
-  // ===== Stats =====
-  const okCount = checklistData.filter(item => item.status === "OK").length;
-  const ngCount = checklistData.filter(item => item.status === "NOT OK").length;
-  const totalCount = checklistData.length;
+  const okCount = checklistData.filter(i => i.status === "OK").length;
+  const ngCount = checklistData.filter(i => i.status === "NOT OK").length;
 
   doc.text(
-    `Total Items: ${totalCount} | OK: ${okCount} | NOT OK: ${ngCount}`,
+    `Total Items: ${checklistData.length} | OK: ${okCount} | NOT OK: ${ngCount}`,
     15,
     40
   );
 
-  // ===== Table Data =====
-  const tableData = checklistData.map(item => [
-    item["FIND NUMBER"] || "",
-    item["PART DESCRIPTION"] || "",
-    item.status || "-",
-    item.remarks || ""
+  const tableData = checklistData.map(i => [
+    i["FIND NUMBER"] || "",
+    i["PART DESCRIPTION"] || "",
+    i.status || "-",
+    i.remarks || ""
   ]);
 
-  // ===== Table =====
   doc.autoTable({
     startY: 46,
-    head: [['FIND NUMBER', 'PART DESCRIPTION', 'STATUS', 'REMARKS']],
+    head: [["FIND NUMBER", "PART DESCRIPTION", "STATUS", "REMARKS"]],
     body: tableData,
-    theme: 'striped',
-    headStyles: {
-      fillColor: [102, 126, 234],
-      textColor: 255,
-      fontStyle: 'bold'
-    },
-    columnStyles: {
-      0: { cellWidth: 30 },
-      1: { cellWidth: 100 },
-      2: { cellWidth: 25, halign: 'center' },
-      3: { cellWidth: 'auto' }
-    },
-    styles: {
-      fontSize: 9,
-      cellPadding: 4,
-      overflow: 'linebreak'
-    },
-    alternateRowStyles: {
-      fillColor: [245, 247, 250]
-    },
-    didParseCell: function (data) {
-      if (data.column.index === 2 && data.section === 'body') {
-        if (data.cell.raw === 'OK') {
-          data.cell.styles.textColor = [16, 185, 129];
-          data.cell.styles.fontStyle = 'bold';
-        }
-        if (data.cell.raw === 'NOT OK') {
-          data.cell.styles.textColor = [239, 68, 68];
-          data.cell.styles.fontStyle = 'bold';
-        }
-      }
-    }
+    theme: "striped",
+    headStyles: { fillColor: [102, 126, 234], textColor: 255 },
+    styles: { fontSize: 9, cellPadding: 4 }
   });
 
-  // ===== Footer =====
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(150);
     doc.text(
-      `Panel No: ${panelNo}  |  Page ${i} of ${pageCount}`,
+      `Panel No: ${panelNo} | Page ${i} of ${pageCount}`,
       doc.internal.pageSize.width / 2,
       doc.internal.pageSize.height - 10,
-      { align: 'center' }
+      { align: "center" }
     );
   }
 
-  // ===== Save =====
-  doc.save(`checklist_${panelNo}_${new Date().toISOString().slice(0, 10)}.pdf`);
-}
-
-/* ================= EXPORT CHECKLIST AS CSV (BACKUP) ================= */
-/* ================= EXPORT CHECKLIST AS CSV (BACKUP) ================= */
-function exportChecklistCSV() {
-  if (!checklistData || checklistData.length === 0) {
-    alert("No checklist data to export. Please upload and process BOM first.");
-    return;
-  }
-
-  // Create CSV content
-  let csvContent = "FIND NUMBER,PART DESCRIPTION,STATUS,REMARKS\n";
-  
-  checklistData.forEach(item => {
-    const findNumber = item["FIND NUMBER"] || "";
-    const partDesc = (item["PART DESCRIPTION"] || "").replace(/,/g, ";"); // Replace commas
-    const status = item.status || "";
-    const remarks = (item.remarks || "").replace(/,/g, ";"); // Replace commas
-    
-    csvContent += `${findNumber},${partDesc},${status},${remarks}\n`;
-  });
-
-  // Create blob and download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute("href", url);
-  link.setAttribute("download", `checklist_export_${new Date().toISOString().slice(0,10)}.csv`);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  doc.save(`checklist_${panelNo}.pdf`);
 }
 
 /* ================= FILE NAME DISPLAY ================= */
-document.getElementById("bomFile").addEventListener("change", function(e) {
-  const fileName = e.target.files[0]?.name || "No file chosen";
-  document.getElementById("bomFileName").textContent = fileName;
+document.getElementById("bomFile").addEventListener("change", e => {
+  document.getElementById("bomFileName").textContent =
+    e.target.files[0]?.name || "No file chosen";
 });
 
-document.getElementById("gaFile").addEventListener("change", function(e) {
-  const fileName = e.target.files[0]?.name || "No file chosen";
-  document.getElementById("gaFileName").textContent = fileName;
+document.getElementById("gaFile").addEventListener("change", e => {
+  document.getElementById("gaFileName").textContent =
+    e.target.files[0]?.name || "No file chosen";
 });
+
+/* ================= MODAL HELPERS ================= */
+function resetProgressModal(title, message = "") {
+  document.querySelector("#progressModal h3").innerText = title;
+  document.getElementById("progressBar").style.width = "0%";
+  document.getElementById("progressBar").innerText = "";
+  document.getElementById("progressMessage").innerText = message;
+}
+function showProgressModal() {
+  document.getElementById("progressModal").style.display = "flex";
+}
+function hideProgressModal() {
+  document.getElementById("progressModal").style.display = "none";
+}
+function updateProgress(d) {
+  document.getElementById("progressBar").style.width = d.progress + "%";
+  document.getElementById("progressBar").innerText = Math.round(d.progress) + "%";
+  document.getElementById("progressMessage").innerText = d.message || "";
+}
 
 /* ================= BOM ================= */
 async function uploadBOM() {
   const file = document.getElementById("bomFile").files[0];
   if (!file) return alert("Select BOM file");
 
-  const fd = new FormData();
-  fd.append("file", file);
+  resetProgressModal("📋 Generating BOM Checklist", "Processing BOM...");
+  showProgressModal();
 
-  await fetch(`${API}/upload/bom`, { method: "POST", body: fd });
-  const r = await fetch(`${API}/process/bom?filename=${file.name}`, { method: "POST" });
-  checklistData = await r.json();
-  renderChecklist();
-  updateStats();
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+
+    await fetch(`${API}/upload/bom`, { method: "POST", body: fd });
+    const r = await fetch(`${API}/process/bom?filename=${file.name}`, {
+      method: "POST"
+    });
+
+    checklistData = await r.json();
+    renderChecklist();
+    updateStats();
+  } catch {
+    alert("Error generating BOM checklist");
+  } finally {
+    hideProgressModal();
+  }
 }
 
 /* ================= CHECKLIST ================= */
@@ -196,111 +155,150 @@ function renderChecklist() {
         </select>
       </td>
       <td>
-        <input type="text" class="remarks-input" data-index="${index}" placeholder="Enter remarks...">
+        <input class="remarks-input" data-index="${index}" placeholder="Remarks">
       </td>
     `;
 
-    tr.onclick = (e) => {
+    tr.onclick = e => {
       if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
-
-      document.querySelectorAll("#checklistBody tr")
-        .forEach(r => r.classList.remove("selected"));
+      document.querySelectorAll("#checklistBody tr").forEach(r => r.classList.remove("selected"));
       tr.classList.add("selected");
-
       loadDetails(item["FIND NUMBER"]);
     };
 
     body.appendChild(tr);
   });
 
-  document.querySelectorAll(".status-select").forEach(s => {
+  document.querySelectorAll(".status-select").forEach(s =>
     s.addEventListener("change", e => {
       checklistData[e.target.dataset.index].status = e.target.value;
       updateStats();
-    });
-  });
+    })
+  );
 
-  document.querySelectorAll(".remarks-input").forEach(i => {
+  document.querySelectorAll(".remarks-input").forEach(i =>
     i.addEventListener("input", e => {
       checklistData[e.target.dataset.index].remarks = e.target.value;
-    });
-  });
+    })
+  );
 }
-
-
-function validatePanelNumbers() {
-  const bomPanelNo = document.getElementById("bomPanelNo")?.value.trim();
-  const gaPanelNo = document.getElementById("gaPanelNo")?.value.trim();
-
-  if (!bomPanelNo || !gaPanelNo) {
-    alert("Please enter both BOM Panel No and GA Panel No.");
-    return false;
-  }
-
-  if (bomPanelNo !== gaPanelNo) {
-    alert(
-      "Panel No mismatch!\n\nBOM Panel No and GA Panel No must be identical to proceed."
-    );
-    return false;
-  }
-
-  return true;
-}
-
 
 /* ================= STATS ================= */
 function updateStats() {
-  const okCount = checklistData.filter(item => item.status === "OK").length;
-  const ngCount = checklistData.filter(item => item.status === "NOT OK").length;
-  const totalCount = checklistData.length;
-
-  document.getElementById("okCount").textContent = okCount;
-  document.getElementById("ngCount").textContent = ngCount;
-  document.getElementById("totalCount").textContent = totalCount;
+  document.getElementById("okCount").textContent =
+    checklistData.filter(i => i.status === "OK").length;
+  document.getElementById("ngCount").textContent =
+    checklistData.filter(i => i.status === "NOT OK").length;
+  document.getElementById("totalCount").textContent = checklistData.length;
 }
 
-/* ================= DETAILS + GA ================= */
+/* ================= DETAILS + GA (ENHANCED) ================= */
 async function loadDetails(findNumber) {
-
-  /* ---------- DETAILS ---------- */
-  const detailsBody = document.querySelector("#detailsTable tbody");
-  detailsBody.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
+  const body = document.querySelector("#detailsTable tbody");
+  body.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
 
   try {
     const r = await fetch(`${API}/bom/details/${encodeURIComponent(findNumber)}`);
     const d = await r.json();
-    detailsBody.innerHTML = "";
+    body.innerHTML = "";
 
     if (!d || Object.keys(d).length === 0) {
-      detailsBody.innerHTML = `<tr><td colspan="2" class="empty-state">No details found</td></tr>`;
-    } else {
-      Object.entries(d).forEach(([k, v]) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
-        detailsBody.appendChild(tr);
-      });
+      body.innerHTML = `<tr><td colspan="2">No details found</td></tr>`;
+      return;
     }
+
+    Object.entries(d).forEach(([k, v]) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
+      body.appendChild(tr);
+    });
   } catch {
-    detailsBody.innerHTML = `<tr><td colspan="2" class="empty-state">Error loading details</td></tr>`;
+    body.innerHTML = `<tr><td colspan="2">Error loading details</td></tr>`;
   }
 
-  /* ---------- GA ---------- */
-  if (!gaLoaded) return;
+  // ✅ ENHANCED: Check if GA is loaded
+  if (!gaLoaded) {
+    return; // Don't try to navigate if GA not loaded
+  }
 
-  const balloon = balloonMapping[findNumber];
-  if (!balloon) return;
+  // ✅ ENHANCED: Check if find number exists in GA
+  const entries = balloonMapping[String(findNumber)];
+  
+  if (!entries || entries.length === 0) {
+    alert(`⚠️ Item ${findNumber} is not found in the GA drawing.\n\nThis item may not be referenced in the General Arrangement.`);
+    return;
+  }
 
-  currentPage = balloon.page;
+  // ✅ ENHANCED: Sort by page number to get first occurrence
+  entries.sort((a, b) => a.page - b.page);
+  
+  // ✅ ENHANCED: Navigate to first occurrence
+  const firstOccurrence = entries[0];
+  currentPage = firstOccurrence.page;
   await renderPage(currentPage);
-  highlightBalloon(balloon);
+  highlightBalloon(firstOccurrence);
+
+  // ✅ ENHANCED: Notify about other pages if balloon appears multiple times
+  if (entries.length > 1) {
+    const otherPages = entries.slice(1).map(e => e.page).join(", ");
+    const message = entries.length === 2 
+      ? `ℹ️ Balloon ${findNumber} also appears on page ${otherPages}`
+      : `ℹ️ Balloon ${findNumber} also appears on pages: ${otherPages}`;
+    
+    console.log(`Balloon ${findNumber} found on ${entries.length} pages:`, entries.map(e => e.page));
+    console.log("Showing notification:", message);
+    
+    // Show notification
+    showNotification(message, "info");
+  } else {
+    console.log(`Balloon ${findNumber} found only on page ${firstOccurrence.page}`);
+  }
+}
+
+/* ================= NOTIFICATION SYSTEM (NEW) ================= */
+function showNotification(message, type = "info") {
+  // Remove existing notification if any
+  const existing = document.getElementById("gaNotification");
+  if (existing) {
+    existing.remove();
+  }
+
+  // Create notification element
+  const notification = document.createElement("div");
+  notification.id = "gaNotification";
+  notification.className = `ga-notification ${type}`;
+  notification.innerHTML = `
+    <span>${message}</span>
+    <button onclick="this.parentElement.remove()">×</button>
+  `;
+
+  // Add to GA container (or body as fallback)
+  const gaContainer = document.getElementById("gaContainer");
+  const targetElement = gaContainer || document.body;
+  
+  if (targetElement) {
+    // Make sure container has relative positioning
+    if (gaContainer) {
+      gaContainer.style.position = "relative";
+    }
+    
+    targetElement.appendChild(notification);
+    
+    // Auto-remove after 8 seconds
+    setTimeout(() => {
+      if (notification.parentElement) {
+        notification.remove();
+      }
+    }, 8000);
+  }
 }
 
 /* ================= GA UPLOAD ================= */
 async function uploadGA() {
-  if (!validatePanelNumbers()) return;
   const file = document.getElementById("gaFile").files[0];
   if (!file) return alert("Select GA file");
 
+  resetProgressModal("⚙️ Processing GA", "Starting GA...");
   showProgressModal();
 
   const fd = new FormData();
@@ -308,31 +306,68 @@ async function uploadGA() {
 
   const r = await fetch(`${API}/upload/ga`, { method: "POST", body: fd });
   const d = await r.json();
+
+  localStorage.setItem("ga_job_id", d.job_id);
   pollJob(d.job_id);
 }
 
 /* ================= POLLING ================= */
 function pollJob(id) {
-  const timer = setInterval(async () => {
-    const r = await fetch(`${API}/job/status/${id}`);
-    const s = await r.json();
-    updateProgress(s);
+  if (gaPollTimer) clearInterval(gaPollTimer);
 
-    if (s.status === "complete") {
-      clearInterval(timer);
-      await loadBalloonMapping();
-      await loadGA();
+  gaPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`${API}/job/status/${id}`);
+      const s = await r.json();
+      updateProgress(s);
+
+      if (s.status === "complete") {
+        clearInterval(gaPollTimer);
+        localStorage.removeItem("ga_job_id");
+        await loadBalloonMapping();
+        await loadGA();
+        hideProgressModal();
+      }
+
+      if (s.status === "cancelled") {
+        clearInterval(gaPollTimer);
+        localStorage.removeItem("ga_job_id");
+        hideProgressModal();
+        alert("GA processing cancelled");
+      }
+
+      if (s.status === "failed") {
+        clearInterval(gaPollTimer);
+        localStorage.removeItem("ga_job_id");
+        hideProgressModal();
+        alert("GA processing failed");
+      }
+    } catch {
+      clearInterval(gaPollTimer);
       hideProgressModal();
     }
   }, 2000);
 }
+
+/* ================= CANCEL JOB ON REFRESH ================= */
+window.addEventListener("beforeunload", () => {
+  const jobId = localStorage.getItem("ga_job_id");
+  if (jobId) {
+    navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
+    localStorage.removeItem("ga_job_id");
+  }
+});
 
 /* ================= BALLOONS ================= */
 async function loadBalloonMapping() {
   const r = await fetch(`${API}/balloon_results`);
   const d = await r.json();
   balloonMapping = {};
-  d.forEach(b => balloonMapping[b.balloon_number] = b);
+  d.forEach(b => {
+    const k = String(b.balloon_number);
+    if (!balloonMapping[k]) balloonMapping[k] = [];
+    balloonMapping[k].push(b);
+  });
 }
 
 /* ================= GA ================= */
@@ -342,15 +377,11 @@ async function loadGA() {
   totalPages = d.pages;
   currentPage = 1;
   gaLoaded = true;
-  
-  // Hide placeholder
-  const placeholder = document.getElementById("gaPlaceholder");
-  if (placeholder) placeholder.style.display = "none";
-  
+  document.getElementById("gaPlaceholder").style.display = "none";
   renderPage(currentPage);
 }
 
-/* ================= RENDER PAGE (PRESERVED LOGIC) ================= */
+/* ================= RENDER PAGE ================= */
 async function renderPage(p) {
   const img = document.getElementById("gaImage");
   const inner = document.getElementById("gaInner");
@@ -362,37 +393,26 @@ async function renderPage(p) {
       imgW = img.naturalWidth;
       imgH = img.naturalHeight;
 
-      const container = document.getElementById("gaContainer");
-      const containerW = container.clientWidth;
+      const containerW = document.getElementById("gaContainer").clientWidth;
+      currentScale = (containerW - 40) / imgW;
 
-      const padding = 40;
-      currentScale = (containerW - padding) / imgW;
-
-      const w = imgW * currentScale;
-      const h = imgH * currentScale;
-
-      img.style.width = w + "px";
-      img.style.height = h + "px";
-      inner.style.width = w + "px";
-      inner.style.height = h + "px";
-      layer.style.width = w + "px";
-      layer.style.height = h + "px";
+      img.style.width = imgW * currentScale + "px";
+      img.style.height = imgH * currentScale + "px";
+      inner.style.width = img.style.width;
+      inner.style.height = img.style.height;
+      layer.style.width = img.style.width;
+      layer.style.height = img.style.height;
 
       document.getElementById("pageInfo").innerText =
         `Page ${currentPage} / ${totalPages}`;
-
       resolve();
     };
-
     img.src = `${API}/ga_image/page_${p}.jpg`;
   });
 }
 
-/* ================= HIGHLIGHT (PRESERVED LOGIC) ================= */
+/* ================= HIGHLIGHT ================= */
 function highlightBalloon(b) {
-  const layer = document.getElementById("highlightLayer");
-  layer.innerHTML = "";
-
   const box = document.createElement("div");
   box.className = "highlight-box";
   box.style.left = b.bbox.x1 * currentScale + "px";
@@ -400,70 +420,7 @@ function highlightBalloon(b) {
   box.style.width = (b.bbox.x2 - b.bbox.x1) * currentScale + "px";
   box.style.height = (b.bbox.y2 - b.bbox.y1) * currentScale + "px";
 
-  layer.appendChild(box);
-}
-
-/* ================= CONTROLS ================= */
-function nextPage() {
-  if (currentPage < totalPages) {
-    currentPage++;
-    renderPage(currentPage);
-  }
-}
-
-function prevPage() {
-  if (currentPage > 1) {
-    currentPage--;
-    renderPage(currentPage);
-  }
-}
-
-function zoomIn() {
-  currentScale *= 1.2;
-  updateScale();
-}
-
-function zoomOut() {
-  currentScale *= 0.8;
-  updateScale();
-}
-
-function fitToPage() {
-  renderPage(currentPage);
-}
-
-function updateScale() {
-  const img = document.getElementById("gaImage");
-  const inner = document.getElementById("gaInner");
   const layer = document.getElementById("highlightLayer");
-
-  const w = imgW * currentScale;
-  const h = imgH * currentScale;
-
-  img.style.width = w + "px";
-  img.style.height = h + "px";
-  inner.style.width = w + "px";
-  inner.style.height = h + "px";
-  layer.style.width = w + "px";
-  layer.style.height = h + "px";
-
-  const selected = document.querySelector("#checklistBody tr.selected");
-  if (selected) {
-    const fn = selected.cells[0].textContent;
-    const b = balloonMapping[fn];
-    if (b) highlightBalloon(b);
-  }
-}
-
-/* ================= MODAL ================= */
-function showProgressModal() {
-  document.getElementById("progressModal").style.display = "flex";
-}
-function hideProgressModal() {
-  document.getElementById("progressModal").style.display = "none";
-}
-function updateProgress(d) {
-  document.getElementById("progressBar").style.width = d.progress + "%";
-  document.getElementById("progressBar").innerText = Math.round(d.progress) + "%";
-  document.getElementById("progressMessage").innerText = d.message || "";
+  layer.innerHTML = "";
+  layer.appendChild(box);
 }

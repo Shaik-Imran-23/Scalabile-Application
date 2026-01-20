@@ -562,3 +562,67 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
 }
+/* GA Notification Styles */
+.ga-notification {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  max-width: 500px;
+  animation: slideDown 0.3s ease-out;
+}
+
+.ga-notification.info {
+  border-left: 4px solid #667eea;
+  background: #f0f4ff;
+}
+
+.ga-notification.warning {
+  border-left: 4px solid #f59e0b;
+  background: #fffbeb;
+}
+
+.ga-notification span {
+  flex: 1;
+  font-size: 14px;
+  color: #333;
+}
+
+.ga-notification button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.ga-notification button:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
