@@ -42,9 +42,15 @@
           </div>
 
           <div class="file-input-wrapper">
-            <label class="file-label">BOM Panel No</label>
+            <label class="file-label">Sr.No</label>
             <input type="text" id="bomPanelNo" class="remarks-input"
                    placeholder="Enter BOM Panel Serial No">
+          </div>
+
+          <div class="file-input-wrapper">
+            <label class="file-label">DD No</label>
+            <input type="text" id="ddNo" class="remarks-input"
+                   placeholder="Enter DD Number">
           </div>
         </div>
 
@@ -61,6 +67,15 @@
           <span class="stat-ok">✓ <span id="okCount">0</span> OK</span>
           <span class="stat-ng">✗ <span id="ngCount">0</span> NG</span>
           <span class="stat-total">📊 <span id="totalCount">0</span> Total</span>
+          <span class="divider">|</span>
+          <span class="inspector-input-wrapper">
+            <label for="inspectorName" class="inspector-label">Inspector:</label>
+            <input type="text" id="inspectorName" class="inspector-input" placeholder="Enter name">
+          </span>
+          <span class="inspector-input-wrapper">
+            <label for="inspectorSignature" class="inspector-label">Signature:</label>
+            <input type="text" id="inspectorSignature" class="signature-input" placeholder="Sign here">
+          </span>
         </div>
       </div>
 
@@ -167,6 +182,10 @@
       <div id="progressBar" class="progress-bar">0%</div>
     </div>
     <div id="progressMessage" class="progress-message"></div>
+    <!-- ADD THIS CANCEL BUTTON -->
+    <button class="btn-cancel" onclick="cancelGAProcessing()" style="margin-top: 15px;">
+      ✖ Cancel Processing
+    </button>
   </div>
 </div>
 

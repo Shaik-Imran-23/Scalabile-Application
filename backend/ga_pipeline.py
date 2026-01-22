@@ -1,5 +1,5 @@
 """
-ga_pipeline.py - YOLO + Moondream Pipeline for GA Processing
+ga_pipeline.py - YOLO + Moondream Pipeline for GA Processing with Cancellation Support
 """
 
 import os
@@ -54,18 +54,32 @@ print("✅ Moondream loaded!")
 # ===============================
 # HELPER FUNCTIONS
 # ===============================
-def predict_number_single(crop_img):
+def predict_number_single(crop_img, is_cancelled_func=None):
     """
-    Extract number from circle crop using Moondream
+    Extract number from circle crop using Moondream with cancellation support
     """
     try:
+        # Check cancellation before inference
+        if is_cancelled_func and is_cancelled_func():
+            print("      ⛔ Number prediction cancelled")
+            return None
+
         pil_img = Image.fromarray(cv2.cvtColor(crop_img, cv2.COLOR_BGR2RGB))
         prompt = "Number in circle:"
         enc_image = vlm_model.encode_image(pil_img)
+
+        # Check cancellation before answer generation
+        if is_cancelled_func and is_cancelled_func():
+            print("      ⛔ Number prediction cancelled")
+            return None
+
         answer = vlm_model.answer_question(enc_image, prompt, vlm_tokenizer)
         number = int("".join(filter(str.isdigit, answer)))
         return number
     except Exception as e:
+        if is_cancelled_func and is_cancelled_func():
+            print("      ⛔ Number prediction cancelled")
+            return None
         print(f"      ⚠️  Error reading number: {e}")
         return None
 
@@ -78,13 +92,16 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
     Process GA PDF and extract balloon numbers with locations
     """
 
-    # 🔹 ADDITION (SAFE): cancellation checker
+    # 🔹 Cancellation checker
     def is_cancelled():
-        return (
+        cancelled = (
             job_id
             and processing_jobs
             and processing_jobs.get(job_id, {}).get("cancelled", False)
         )
+        if cancelled:
+            print("⛔ Cancellation detected")
+        return cancelled
 
     def update_status(progress, message):
         if job_id and processing_jobs:
@@ -95,6 +112,7 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
 
     print(f"\n{'='*50}")
     print(f"🔄 Processing GA: {pdf_path}")
+    print(f"Job ID: {job_id}")
     print(f"{'='*50}\n")
 
     # Create output directory for images
@@ -108,7 +126,6 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
     # ===============================
     update_status(10, "Converting PDF to images...")
 
-    # 🔹 ADDITION: cancel before heavy operation
     if is_cancelled():
         print("⛔ GA processing cancelled before PDF conversion")
         return []
@@ -122,6 +139,11 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
     total_pages = len(pages)
     print(f"✅ Converted {total_pages} pages\n")
 
+    # Check cancellation after PDF conversion
+    if is_cancelled():
+        print("⛔ GA processing cancelled after PDF conversion")
+        return []
+
     update_status(20, f"Converted {total_pages} pages. Starting detection...")
 
     results = []
@@ -132,7 +154,7 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
     # ===============================
     for page_no, page in enumerate(pages, start=1):
 
-        # 🔹 ADDITION: cancel check per page
+        # Check cancellation at start of each page
         if is_cancelled():
             print(f"⛔ GA processing cancelled at page {page_no}")
             update_status(0, "Processing cancelled")
@@ -148,12 +170,23 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
         page.save(image_path, "JPEG", quality=95)
         print(f"   💾 Saved image: {image_filename}")
 
+        # Check cancellation before YOLO
+        if is_cancelled():
+            print(f"⛔ GA processing cancelled before YOLO on page {page_no}")
+            return results
+
         page_img = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
         img_height, img_width = page_img.shape[:2]
         print(f"   📐 OpenCV size: {img_width}x{img_height} pixels")
 
         print(f"   🎯 Running YOLO detection...")
         detections = yolo_model(page_img)[0]
+
+        # Check cancellation after YOLO
+        if is_cancelled():
+            print(f"⛔ GA processing cancelled after YOLO on page {page_no}")
+            return results
+
         num_circles = len(detections.boxes)
         total_circles += num_circles
         print(f"   ✅ Found {num_circles} circles")
@@ -172,9 +205,9 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
 
         for circle_idx, box in enumerate(detections.boxes, 1):
 
-            # 🔹 ADDITION: cancel before expensive inference
+            # Check cancellation before each Moondream inference
             if is_cancelled():
-                print("⛔ GA processing cancelled during Moondream inference")
+                print(f"⛔ GA processing cancelled during balloon {circle_idx}/{num_circles}")
                 update_status(0, "Processing cancelled")
                 return results
 
@@ -184,7 +217,14 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
             if crop.size == 0:
                 continue
 
-            balloon_number = predict_number_single(crop)
+            # Pass cancellation checker to Moondream
+            balloon_number = predict_number_single(crop, is_cancelled_func=is_cancelled)
+
+            # If cancelled during prediction, return immediately
+            if is_cancelled():
+                print("⛔ GA processing cancelled during number prediction")
+                return results
+
             if balloon_number is None:
                 continue
 
@@ -211,6 +251,11 @@ def process_ga_pdf(pdf_path: str, dpi: int = 300, job_id: str = None, processing
             )
 
         print()
+
+    # Final cancellation check
+    if is_cancelled():
+        print("⛔ GA processing cancelled before completion")
+        return results
 
     # ===============================
     # Stage 3: Complete

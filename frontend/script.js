@@ -21,33 +21,43 @@ function exportChecklistPDF() {
 
   const panelNo = document.getElementById("bomPanelNo")?.value.trim();
   if (!panelNo) {
-    alert("Please enter BOM Panel No before exporting.");
+    alert("Please enter Sr.No before exporting.");
+    return;
+  }
+
+  const ddNo = document.getElementById("ddNo")?.value.trim();
+  if (!ddNo) {
+    alert("Please enter DD No before exporting.");
+    return;
+  }
+
+  const inspectorName = document.getElementById("inspectorName")?.value.trim();
+  if (!inspectorName) {
+    alert("Please enter Inspector Name before exporting.");
+    return;
+  }
+
+  const inspectorSignature = document.getElementById("inspectorSignature")?.value.trim();
+  if (!inspectorSignature) {
+    alert("Please enter Inspector Signature before exporting.");
     return;
   }
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF("l", "mm", "a4");
+  const pageWidth = doc.internal.pageSize.width;
+  const pageHeight = doc.internal.pageSize.height;
 
-  doc.setFontSize(18);
-  doc.setTextColor(102, 126, 234);
-  doc.text("Digital Panel Inspection - Checklist Report", 15, 20);
+  const today = new Date();
+  const dateStr = today.toLocaleDateString();
+  const timeStr = today.toLocaleTimeString();
 
-  doc.setFontSize(10);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Panel No: ${panelNo}`, 15, 28);
-
-  const today = new Date().toLocaleDateString();
-  doc.text(`Export Date: ${today}`, 15, 34);
-
+  // Calculate stats
   const okCount = checklistData.filter(i => i.status === "OK").length;
   const ngCount = checklistData.filter(i => i.status === "NOT OK").length;
+  const totalCount = checklistData.length;
 
-  doc.text(
-    `Total Items: ${checklistData.length} | OK: ${okCount} | NOT OK: ${ngCount}`,
-    15,
-    40
-  );
-
+  // Table data
   const tableData = checklistData.map(i => [
     i["FIND NUMBER"] || "",
     i["PART DESCRIPTION"] || "",
@@ -55,29 +65,187 @@ function exportChecklistPDF() {
     i.remarks || ""
   ]);
 
-  doc.autoTable({
-    startY: 46,
-    head: [["FIND NUMBER", "PART DESCRIPTION", "STATUS", "REMARKS"]],
-    body: tableData,
-    theme: "striped",
-    headStyles: { fillColor: [102, 126, 234], textColor: 255 },
-    styles: { fontSize: 9, cellPadding: 4 }
-  });
+  // ========== CUSTOM HEADER FUNCTION ==========
+  function addHeader() {
+    // Top border line - thicker and more prominent
+    doc.setDrawColor(0, 51, 153); // Dark blue
+    doc.setLineWidth(2);
+    doc.line(10, 8, pageWidth - 10, 8);
 
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text(
-      `Panel No: ${panelNo} | Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width / 2,
-      doc.internal.pageSize.height - 10,
-      { align: "center" }
-    );
+    const startY = 11;
+    const logoBoxWidth = 60; // Increased from 50
+    const tableStartX = 10 + logoBoxWidth;
+    const rowHeight = 9; // Slightly increased for better spacing
+
+    // Draw logo box with subtle shadow effect
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.6);
+    doc.rect(10, startY, logoBoxWidth, rowHeight * 3);
+
+    // Add logo image (Larsen & Toubro) - centered and larger
+    const logoWidth = 55; // Increased from 45
+    const logoHeight = 22; // Increased from 20
+    const logoX = 10 + (logoBoxWidth - logoWidth) / 2;
+    const logoY = startY + (rowHeight * 3 - logoHeight) / 2;
+    
+    try {
+      const logo = new Image();
+      logo.src = 'logo.jpg';
+      doc.addImage(logo, 'JPEG', logoX, logoY, logoWidth, logoHeight);
+    } catch (e) {
+      // If logo fails to load, show text
+      doc.setFontSize(11);
+      doc.setTextColor(0, 51, 153);
+      doc.setFont("helvetica", "bold");
+      doc.text("LARSEN &", logoX + 5, logoY + 10);
+      doc.text("TOUBRO", logoX + 5, logoY + 16);
+    }
+
+    // Calculate table dimensions
+    const tableWidth = pageWidth - 10 - tableStartX;
+
+    // Row 1: Title (full width) - enhanced styling
+    doc.setLineWidth(0.6);
+    doc.rect(tableStartX, startY, tableWidth, rowHeight);
+    doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.text("Digital Bom-Checklist Report", tableStartX + tableWidth / 2, startY + 6.2, { align: "center" });
+
+    // Row 2: Panel No value only - better vertical centering
+    doc.rect(tableStartX, startY + rowHeight, tableWidth, rowHeight);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 30, 30);
+    doc.text(panelNo, tableStartX + tableWidth / 2, startY + rowHeight + 6.2, { align: "center" });
+
+    // Row 3: DD NO value only - better vertical centering
+    doc.rect(tableStartX, startY + rowHeight * 2, tableWidth, rowHeight);
+    doc.setFont("helvetica", "normal");
+    doc.text(ddNo, tableStartX + tableWidth / 2, startY + rowHeight * 2 + 6.2, { align: "center" });
+
+    // Bottom border line - thicker and more prominent
+    doc.setDrawColor(0, 51, 153);
+    doc.setLineWidth(2);
+    doc.line(10, startY + rowHeight * 3 + 0.5, pageWidth - 10, startY + rowHeight * 3 + 0.5);
   }
 
-  doc.save(`checklist_${panelNo}.pdf`);
+  // ========== CUSTOM FOOTER FUNCTION ==========
+  function addFooter(pageNum, totalPages) {
+    const footerY = pageHeight - 22;
+
+    // Top border line for footer
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.4);
+    doc.line(10, footerY, pageWidth - 10, footerY);
+
+    // Inspector and Date/Time info
+    const infoY = footerY + 5;
+    
+    doc.setFontSize(9);
+    doc.setTextColor(50, 50, 50);
+    doc.setFont("helvetica", "bold");
+    doc.text("Inspector:", 15, infoY);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 30, 30);
+    doc.text(inspectorName, 37, infoY);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text("Signature:", 15, infoY + 5);
+    doc.setFont("times", "italic");
+    doc.setFontSize(11);
+    doc.setTextColor(30, 30, 30);
+    doc.text(inspectorSignature, 37, infoY + 5);
+
+    // Date and Time on the right
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text("Date:", pageWidth - 55, infoY);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 30, 30);
+    doc.text(dateStr, pageWidth - 42, infoY);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text("Time:", pageWidth - 55, infoY + 5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 30, 30);
+    doc.text(timeStr, pageWidth - 42, infoY + 5);
+
+    // Inspection Summary - tighter spacing
+    const summaryY = infoY + 11;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50, 50, 50);
+    doc.text("Inspection Summary:", 15, summaryY);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(16, 185, 129); // Green
+    doc.text("OK: " + String(okCount), 58, summaryY);
+    
+    doc.setTextColor(239, 68, 68); // Red
+    doc.text("NOT OK: " + String(ngCount), 80, summaryY);
+    
+    doc.setTextColor(99, 102, 241); // Blue
+    doc.text("Total: " + String(totalCount), 115, summaryY);
+
+    // Page number at bottom - using manual string construction
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.text("Page " + String(pageNum) + " of " + String(totalPages), pageWidth / 2, pageHeight - 5, { align: "center" });
+  }
+
+  // ========== GENERATE PDF ==========
+  // Add header to first page
+  addHeader();
+
+  // Add table with custom settings
+  doc.autoTable({
+    startY: 40,
+    margin: { top: 40, bottom: 40, left: 10, right: 10 },
+    head: [["FIND", "PART DESCRIPTION", "STATUS", "REMARKS"]],
+    body: tableData,
+    theme: "striped",
+    headStyles: { 
+      fillColor: [102, 126, 234], 
+      textColor: 255,
+      fontSize: 10,
+      fontStyle: "bold",
+      halign: "center"
+    },
+    styles: { 
+      fontSize: 9, 
+      cellPadding: 3,
+      overflow: "linebreak"
+    },
+    columnStyles: {
+      0: { cellWidth: 25, halign: "center" },
+      1: { cellWidth: 120 },
+      2: { cellWidth: 30, halign: "center" },
+      3: { cellWidth: 'auto' }
+    },
+    didDrawPage: function(data) {
+      // Add header to every page
+      if (data.pageNumber > 1) {
+        addHeader();
+      }
+      // Add footer to every page
+      addFooter(data.pageNumber, doc.internal.getNumberOfPages());
+    }
+  });
+
+  // Update all footers with correct total page count
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addFooter(i, totalPages);
+  }
+
+  // Save with descriptive filename
+  doc.save(`PanelInspection_${panelNo}_${dateStr.replace(/\//g, "-")}.pdf`);
 }
 
 /* ================= FILE NAME DISPLAY ================= */
@@ -192,7 +360,7 @@ function updateStats() {
   document.getElementById("totalCount").textContent = checklistData.length;
 }
 
-/* ================= DETAILS + GA (ENHANCED) ================= */
+/* ================= DETAILS + GA ================= */
 async function loadDetails(findNumber) {
   const body = document.querySelector("#detailsTable tbody");
   body.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
@@ -216,12 +384,8 @@ async function loadDetails(findNumber) {
     body.innerHTML = `<tr><td colspan="2">Error loading details</td></tr>`;
   }
 
-  // ✅ ENHANCED: Check if GA is loaded
-  if (!gaLoaded) {
-    return; // Don't try to navigate if GA not loaded
-  }
+  if (!gaLoaded) return;
 
-  // ✅ ENHANCED: Check if find number exists in GA
   const entries = balloonMapping[String(findNumber)];
   
   if (!entries || entries.length === 0) {
@@ -229,41 +393,28 @@ async function loadDetails(findNumber) {
     return;
   }
 
-  // ✅ ENHANCED: Sort by page number to get first occurrence
   entries.sort((a, b) => a.page - b.page);
   
-  // ✅ ENHANCED: Navigate to first occurrence
   const firstOccurrence = entries[0];
   currentPage = firstOccurrence.page;
   await renderPage(currentPage);
   highlightBalloon(firstOccurrence);
 
-  // ✅ ENHANCED: Notify about other pages if balloon appears multiple times
   if (entries.length > 1) {
     const otherPages = entries.slice(1).map(e => e.page).join(", ");
     const message = entries.length === 2 
       ? `ℹ️ Balloon ${findNumber} also appears on page ${otherPages}`
       : `ℹ️ Balloon ${findNumber} also appears on pages: ${otherPages}`;
     
-    console.log(`Balloon ${findNumber} found on ${entries.length} pages:`, entries.map(e => e.page));
-    console.log("Showing notification:", message);
-    
-    // Show notification
     showNotification(message, "info");
-  } else {
-    console.log(`Balloon ${findNumber} found only on page ${firstOccurrence.page}`);
   }
 }
 
-/* ================= NOTIFICATION SYSTEM (NEW) ================= */
+/* ================= NOTIFICATION ================= */
 function showNotification(message, type = "info") {
-  // Remove existing notification if any
   const existing = document.getElementById("gaNotification");
-  if (existing) {
-    existing.remove();
-  }
+  if (existing) existing.remove();
 
-  // Create notification element
   const notification = document.createElement("div");
   notification.id = "gaNotification";
   notification.className = `ga-notification ${type}`;
@@ -272,24 +423,10 @@ function showNotification(message, type = "info") {
     <button onclick="this.parentElement.remove()">×</button>
   `;
 
-  // Add to GA container (or body as fallback)
   const gaContainer = document.getElementById("gaContainer");
-  const targetElement = gaContainer || document.body;
-  
-  if (targetElement) {
-    // Make sure container has relative positioning
-    if (gaContainer) {
-      gaContainer.style.position = "relative";
-    }
-    
-    targetElement.appendChild(notification);
-    
-    // Auto-remove after 8 seconds
-    setTimeout(() => {
-      if (notification.parentElement) {
-        notification.remove();
-      }
-    }, 8000);
+  if (gaContainer) {
+    gaContainer.appendChild(notification);
+    setTimeout(() => notification.remove(), 8000);
   }
 }
 
@@ -298,6 +435,7 @@ async function uploadGA() {
   const file = document.getElementById("gaFile").files[0];
   if (!file) return alert("Select GA file");
 
+  resetGAViewer();
   resetProgressModal("⚙️ Processing GA", "Starting GA...");
   showProgressModal();
 
@@ -309,6 +447,27 @@ async function uploadGA() {
 
   localStorage.setItem("ga_job_id", d.job_id);
   pollJob(d.job_id);
+}
+
+/* ================= RESET GA VIEWER ================= */
+function resetGAViewer() {
+  gaLoaded = false;
+  currentPage = 1;
+  totalPages = 0;
+  currentScale = 1;
+  balloonMapping = {};
+  
+  const img = document.getElementById("gaImage");
+  img.src = "";
+  img.style.width = "0";
+  img.style.height = "0";
+  
+  document.getElementById("highlightLayer").innerHTML = "";
+  document.getElementById("gaPlaceholder").style.display = "flex";
+  document.getElementById("pageInfo").innerText = "No GA loaded";
+  
+  const notification = document.getElementById("gaNotification");
+  if (notification) notification.remove();
 }
 
 /* ================= POLLING ================= */
@@ -329,28 +488,61 @@ function pollJob(id) {
         hideProgressModal();
       }
 
-      if (s.status === "cancelled") {
+      if (s.status === "cancelled" || s.status === "error") {
         clearInterval(gaPollTimer);
         localStorage.removeItem("ga_job_id");
         hideProgressModal();
-        alert("GA processing cancelled");
-      }
-
-      if (s.status === "failed") {
-        clearInterval(gaPollTimer);
-        localStorage.removeItem("ga_job_id");
-        hideProgressModal();
-        alert("GA processing failed");
+        alert(`GA processing ${s.status}`);
       }
     } catch {
       clearInterval(gaPollTimer);
       hideProgressModal();
     }
-  }, 2000);
+  }, 500);
 }
 
-/* ================= CANCEL JOB ON REFRESH ================= */
+/* ================= CANCEL ================= */
+async function cancelGAProcessing() {
+  const jobId = localStorage.getItem("ga_job_id");
+  if (!jobId) {
+    alert("No active GA processing to cancel");
+    return;
+  }
+
+  try {
+    await fetch(`${API}/job/cancel/${jobId}`, { method: "POST" });
+    localStorage.removeItem("ga_job_id");
+    if (gaPollTimer) clearInterval(gaPollTimer);
+    hideProgressModal();
+    alert("GA processing cancelled");
+  } catch (e) {
+    console.error("Error cancelling job:", e);
+  }
+}
+
 window.addEventListener("beforeunload", () => {
+  const jobId = localStorage.getItem("ga_job_id");
+  if (jobId) {
+    navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
+    localStorage.removeItem("ga_job_id");
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    const jobId = localStorage.getItem("ga_job_id");
+    if (jobId) {
+      fetch(`${API}/job/cancel/${jobId}`, {
+        method: "POST",
+        keepalive: true
+      }).catch(() => {
+        navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
+      });
+    }
+  }
+});
+
+window.addEventListener("pagehide", () => {
   const jobId = localStorage.getItem("ga_job_id");
   if (jobId) {
     navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
@@ -370,7 +562,6 @@ async function loadBalloonMapping() {
   });
 }
 
-/* ================= GA ================= */
 async function loadGA() {
   const r = await fetch(`${API}/ga_pages`);
   const d = await r.json();
@@ -403,8 +594,7 @@ async function renderPage(p) {
       layer.style.width = img.style.width;
       layer.style.height = img.style.height;
 
-      document.getElementById("pageInfo").innerText =
-        `Page ${currentPage} / ${totalPages}`;
+      document.getElementById("pageInfo").innerText = `Page ${currentPage} / ${totalPages}`;
       resolve();
     };
     img.src = `${API}/ga_image/page_${p}.jpg`;
@@ -415,6 +605,7 @@ async function renderPage(p) {
 function highlightBalloon(b) {
   const box = document.createElement("div");
   box.className = "highlight-box";
+  box.dataset.balloonNumber = b.balloon_number;
   box.style.left = b.bbox.x1 * currentScale + "px";
   box.style.top = b.bbox.y1 * currentScale + "px";
   box.style.width = (b.bbox.x2 - b.bbox.x1) * currentScale + "px";
@@ -423,4 +614,70 @@ function highlightBalloon(b) {
   const layer = document.getElementById("highlightLayer");
   layer.innerHTML = "";
   layer.appendChild(box);
+}
+
+/* ================= GA CONTROLS ================= */
+async function prevPage() {
+  if (!gaLoaded || currentPage <= 1) return;
+  currentPage--;
+  await renderPage(currentPage);
+}
+
+async function nextPage() {
+  if (!gaLoaded || currentPage >= totalPages) return;
+  currentPage++;
+  await renderPage(currentPage);
+}
+
+function zoomIn() {
+  if (!gaLoaded) return;
+  currentScale *= 1.2;
+  applyZoom();
+}
+
+function zoomOut() {
+  if (!gaLoaded) return;
+  currentScale /= 1.2;
+  applyZoom();
+}
+
+function fitToScreen() {
+  if (!gaLoaded) return;
+  const containerW = document.getElementById("gaContainer").clientWidth;
+  currentScale = (containerW - 40) / imgW;
+  applyZoom();
+}
+
+function fitToPage() {
+  fitToScreen();
+}
+
+function applyZoom() {
+  const img = document.getElementById("gaImage");
+  const inner = document.getElementById("gaInner");
+  const layer = document.getElementById("highlightLayer");
+
+  const newW = imgW * currentScale;
+  const newH = imgH * currentScale;
+
+  img.style.width = newW + "px";
+  img.style.height = newH + "px";
+  inner.style.width = newW + "px";
+  inner.style.height = newH + "px";
+  layer.style.width = newW + "px";
+  layer.style.height = newH + "px";
+
+  const existingHighlight = layer.querySelector('.highlight-box');
+  if (existingHighlight) {
+    const balloonNum = existingHighlight.dataset.balloonNumber;
+    if (balloonNum) {
+      const entries = balloonMapping[balloonNum];
+      if (entries) {
+        const currentEntry = entries.find(e => e.page === currentPage);
+        if (currentEntry) {
+          highlightBalloon(currentEntry);
+        }
+      }
+    }
+  }
 }

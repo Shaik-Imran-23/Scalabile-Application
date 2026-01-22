@@ -198,6 +198,64 @@ body {
   gap: 16px;
   font-size: 12px;
   font-weight: 600;
+  align-items: center;
+}
+
+.inspector-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inspector-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a5568;
+  white-space: nowrap;
+}
+
+.inspector-input {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  width: 140px;
+  transition: all 0.2s ease;
+}
+
+.inspector-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.inspector-input::placeholder {
+  color: #cbd5e0;
+  font-style: italic;
+}
+
+.signature-input {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 16px;
+  width: 140px;
+  font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
+  font-style: italic;
+  transition: all 0.2s ease;
+}
+
+.signature-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.signature-input::placeholder {
+  color: #cbd5e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-style: italic;
+  font-size: 12px;
 }
 
 .stat-item {
@@ -625,4 +683,19 @@ body {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+.btn-cancel {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-cancel:hover {
+  background: #dc2626;
 }
