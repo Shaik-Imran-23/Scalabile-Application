@@ -87,6 +87,7 @@
               <th>PART DESCRIPTION</th>
               <th>STATUS</th>
               <th>REMARKS</th>
+              <th>SCAN</th> <!-- ✅ ADD -->
             </tr>
           </thead>
           <tbody id="checklistBody">
@@ -188,6 +189,20 @@
     </button>
   </div>
 </div>
+
+<!-- CAMERA MODAL -->
+<div id="cameraModal" class="modal">
+  <div class="modal-content" style="width: 520px;">
+    <h3>📷 Scan Component</h3>
+    <video id="cameraVideo" autoplay playsinline style="width:100%; border-radius:8px;"></video>
+    <canvas id="cameraCanvas" style="display:none;"></canvas>
+    <div style="display:flex; gap:10px; justify-content:center; margin-top:15px;">
+      <button class="btn-primary" onclick="capturePhoto()">📸 Capture</button>
+      <button class="btn-cancel" onclick="closeCamera()">✖ Close</button>
+    </div>
+  </div>
+</div>
+
 
 <script src="script.js"></script>
 </body>

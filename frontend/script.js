@@ -312,27 +312,45 @@ function renderChecklist() {
 
   checklistData.forEach((item, index) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${item["FIND NUMBER"]}</td>
-      <td>${item["PART DESCRIPTION"]}</td>
-      <td>
-        <select class="status-select" data-index="${index}">
-          <option value="">-</option>
-          <option value="OK">OK</option>
-          <option value="NOT OK">NOT OK</option>
-        </select>
-      </td>
-      <td>
-        <input class="remarks-input" data-index="${index}" placeholder="Remarks">
-      </td>
-    `;
+tr.innerHTML = `
+  <td>${item["FIND NUMBER"]}</td>
+  <td>${item["PART DESCRIPTION"]}</td>
+  <td>
+    <select class="status-select" data-index="${index}">
+      <option value="">-</option>
+      <option value="OK">OK</option>
+      <option value="NOT OK">NOT OK</option>
+    </select>
+  </td>
+  <td>
+    <input class="remarks-input" data-index="${index}" placeholder="Remarks">
+  </td>
+  <td>
+    <button class="scan-btn" data-index="${index}">📷 Scan</button>
+    <input 
+      type="file"
+      accept="image/*"
+      capture="environment"
+      class="scan-input"
+      data-index="${index}"
+      style="display:none"
+    />
+  </td>
+`;
+
 
     tr.onclick = e => {
-      if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
-      document.querySelectorAll("#checklistBody tr").forEach(r => r.classList.remove("selected"));
-      tr.classList.add("selected");
-      loadDetails(item["FIND NUMBER"]);
-    };
+  if (
+    e.target.tagName === "SELECT" ||
+    e.target.tagName === "INPUT" ||
+    e.target.classList.contains("scan-btn")
+  ) return;
+
+  document.querySelectorAll("#checklistBody tr").forEach(r => r.classList.remove("selected"));
+  tr.classList.add("selected");
+  loadDetails(item["FIND NUMBER"]);
+};
+
 
     body.appendChild(tr);
   });
@@ -680,4 +698,66 @@ function applyZoom() {
       }
     }
   }
+}
+
+
+document.addEventListener("click", e => {
+  if (!e.target.classList.contains("scan-btn")) return;
+
+  e.stopPropagation(); // 🔒 prevent row click
+
+  const index = e.target.dataset.index;
+  
+  // Detect if mobile/tablet or desktop
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 
+                   ('ontouchstart' in window);
+  
+  if (isMobile) {
+    // Use native file input for mobile - more reliable
+    const input = document.querySelector(`.scan-input[data-index="${index}"]`);
+    if (input) input.click();
+  } else {
+    // Use webcam API for desktop/laptop
+    openCamera(index);
+  }
+});
+
+let cameraStream = null;
+
+async function openCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
+
+    const video = document.getElementById("cameraVideo");
+    video.srcObject = cameraStream;
+
+    document.getElementById("cameraModal").style.display = "flex";
+  } catch (err) {
+    alert("Camera access failed or not allowed");
+    console.error(err);
+  }
+}
+
+function capturePhoto() {
+  const video = document.getElementById("cameraVideo");
+  const canvas = document.getElementById("cameraCanvas");
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0);
+
+  // ⚠️ Not storing anywhere (as per requirement)
+  closeCamera();
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById("cameraModal").style.display = "none";
 }
