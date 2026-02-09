@@ -1,3 +1,8 @@
+// ============================================================================
+// COMPLETE SCRIPT.JS - WITH CACHE + RESUME CAPABILITY
+// Production Ready - All Features Integrated
+// ============================================================================
+
 const API = "http://localhost:8000";
 
 let checklistData = [];
@@ -11,6 +16,152 @@ let gaLoaded = false;
 let imgW = 0;
 let imgH = 0;
 let gaPollTimer = null;
+let isProcessingCompletion = false;
+
+// Track unsaved changes
+let hasUnsavedChanges = false;
+
+// Page zoom levels per page
+const pageZoomLevels = {};
+
+// Preloaded logo for PDF export
+let companyLogo = null;
+
+/* ================= INITIALIZATION ================= */
+window.addEventListener("DOMContentLoaded", () => {
+  // Preload logo for PDF export
+  const logoImg = new Image();
+  logoImg.onload = () => { 
+    companyLogo = logoImg;
+    console.log("✅ Logo preloaded for PDF export");
+  };
+  logoImg.onerror = () => {
+    console.warn("⚠️ Logo failed to load");
+  };
+  logoImg.src = 'logo.jpg';
+
+  // Restore backup if available
+  restoreChecklistBackup();
+
+  // Setup keyboard shortcuts
+  setupKeyboardShortcuts();
+});
+
+// ===============================
+// SESSION ID (MULTI-USER SUPPORT)
+// ===============================
+let SESSION_ID = localStorage.getItem("SESSION_ID");
+
+if (!SESSION_ID) {
+    SESSION_ID = crypto.randomUUID();
+    localStorage.setItem("SESSION_ID", SESSION_ID);
+}
+
+console.log("🔑 Session ID:", SESSION_ID);
+
+
+/* ================= BACKUP & RESTORE ================= */
+function saveChecklistBackup() {
+  try {
+    localStorage.setItem("checklist_backup", JSON.stringify({
+      data: checklistData,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    console.warn("Failed to save backup:", e);
+  }
+}
+
+function restoreChecklistBackup() {
+  try {
+    const backup = localStorage.getItem("checklist_backup");
+    if (!backup) return;
+
+    const { data, timestamp } = JSON.parse(backup);
+    
+    // Only restore if less than 1 hour old
+    if (Date.now() - timestamp < 3600000) {
+      if (confirm("Found a previous session. Would you like to restore it?")) {
+        checklistData = data;
+        renderChecklist();
+        updateStats();
+        hasUnsavedChanges = true;
+        console.log("✅ Restored previous session");
+      } else {
+        localStorage.removeItem("checklist_backup");
+      }
+    } else {
+      // Clear old backup
+      localStorage.removeItem("checklist_backup");
+    }
+  } catch (e) {
+    console.warn("Failed to restore backup:", e);
+    localStorage.removeItem("checklist_backup");
+  }
+}
+
+function clearChecklistBackup() {
+  localStorage.removeItem("checklist_backup");
+  hasUnsavedChanges = false;
+}
+
+/* ================= KEYBOARD SHORTCUTS ================= */
+function setupKeyboardShortcuts() {
+  document.addEventListener("keydown", (e) => {
+    // Ctrl/Cmd + E = Export PDF
+    if ((e.ctrlKey || e.metaKey) && e.key === "e") {
+      e.preventDefault();
+      exportChecklistPDF();
+    }
+
+    // Arrow keys for GA navigation (only when not typing)
+    if (!e.target.matches("input, select, textarea")) {
+      if (gaLoaded && document.getElementById("gaImage").src) {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          prevPage();
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          nextPage();
+        }
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          zoomIn();
+        }
+        if (e.key === "-") {
+          e.preventDefault();
+          zoomOut();
+        }
+        if (e.key === "f" || e.key === "F") {
+          e.preventDefault();
+          fitToPage();
+        }
+      }
+    }
+  });
+}
+
+/* ================= JOB CANCELLATION ON WINDOW CLOSE ================= */
+window.addEventListener("beforeunload", (e) => {
+  // Cancel active GA job on actual page unload
+  const jobId = localStorage.getItem("ga_job_id");
+  if (jobId) {
+    console.log("🚪 Window closing, cancelling job:", jobId);
+    navigator.sendBeacon(
+      `${API}/job/cancel/${jobId}`,
+      JSON.stringify({ sessionId: SESSION_ID })
+    );
+    localStorage.removeItem("ga_job_id");
+  }
+
+  // Warn about unsaved changes
+  if (hasUnsavedChanges) {
+    e.preventDefault();
+    e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+    return e.returnValue;
+  }
+});
 
 /* ================= EXPORT CHECKLIST AS PDF ================= */
 function exportChecklistPDF() {
@@ -19,29 +170,27 @@ function exportChecklistPDF() {
     return;
   }
 
-  const panelNo = document.getElementById("bomPanelNo")?.value.trim();
-  if (!panelNo) {
-    alert("Please enter Sr.No before exporting.");
-    return;
+  // Validate required fields
+  const requiredFields = [
+    { id: "bomPanelNo", label: "Sr.No" },
+    { id: "ddNo", label: "DD No" },
+    { id: "inspectorName", label: "Inspector Name" },
+    { id: "inspectorSignature", label: "Inspector Signature" }
+  ];
+
+  for (const field of requiredFields) {
+    const value = document.getElementById(field.id)?.value.trim();
+    if (!value) {
+      alert(`Please enter ${field.label} before exporting.`);
+      document.getElementById(field.id)?.focus();
+      return;
+    }
   }
 
-  const ddNo = document.getElementById("ddNo")?.value.trim();
-  if (!ddNo) {
-    alert("Please enter DD No before exporting.");
-    return;
-  }
-
-  const inspectorName = document.getElementById("inspectorName")?.value.trim();
-  if (!inspectorName) {
-    alert("Please enter Inspector Name before exporting.");
-    return;
-  }
-
-  const inspectorSignature = document.getElementById("inspectorSignature")?.value.trim();
-  if (!inspectorSignature) {
-    alert("Please enter Inspector Signature before exporting.");
-    return;
-  }
+  const panelNo = document.getElementById("bomPanelNo").value.trim();
+  const ddNo = document.getElementById("ddNo").value.trim();
+  const inspectorName = document.getElementById("inspectorName").value.trim();
+  const inspectorSignature = document.getElementById("inspectorSignature").value.trim();
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF("l", "mm", "a4");
@@ -67,44 +216,37 @@ function exportChecklistPDF() {
 
   // ========== CUSTOM HEADER FUNCTION ==========
   function addHeader() {
-    // Top border line - thicker and more prominent
-    doc.setDrawColor(0, 51, 153); // Dark blue
+    doc.setDrawColor(0, 51, 153);
     doc.setLineWidth(2);
     doc.line(10, 8, pageWidth - 10, 8);
 
     const startY = 11;
-    const logoBoxWidth = 60; // Increased from 50
+    const logoBoxWidth = 60;
     const tableStartX = 10 + logoBoxWidth;
-    const rowHeight = 9; // Slightly increased for better spacing
+    const rowHeight = 9;
 
-    // Draw logo box with subtle shadow effect
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.6);
     doc.rect(10, startY, logoBoxWidth, rowHeight * 3);
 
-    // Add logo image (Larsen & Toubro) - centered and larger
-    const logoWidth = 55; // Increased from 45
-    const logoHeight = 22; // Increased from 20
+    const logoWidth = 55;
+    const logoHeight = 22;
     const logoX = 10 + (logoBoxWidth - logoWidth) / 2;
     const logoY = startY + (rowHeight * 3 - logoHeight) / 2;
     
-    try {
-      const logo = new Image();
-      logo.src = 'logo.jpg';
-      doc.addImage(logo, 'JPEG', logoX, logoY, logoWidth, logoHeight);
-    } catch (e) {
-      // If logo fails to load, show text
-      doc.setFontSize(11);
-      doc.setTextColor(0, 51, 153);
-      doc.setFont("helvetica", "bold");
-      doc.text("LARSEN &", logoX + 5, logoY + 10);
-      doc.text("TOUBRO", logoX + 5, logoY + 16);
+    if (companyLogo) {
+      try {
+        doc.addImage(companyLogo, 'JPEG', logoX, logoY, logoWidth, logoHeight);
+      } catch (e) {
+        console.warn("Failed to add logo:", e);
+        addLogoFallback(doc, logoX, logoY);
+      }
+    } else {
+      addLogoFallback(doc, logoX, logoY);
     }
 
-    // Calculate table dimensions
     const tableWidth = pageWidth - 10 - tableStartX;
 
-    // Row 1: Title (full width) - enhanced styling
     doc.setLineWidth(0.6);
     doc.rect(tableStartX, startY, tableWidth, rowHeight);
     doc.setFontSize(14);
@@ -112,34 +254,36 @@ function exportChecklistPDF() {
     doc.setFont("helvetica", "bold");
     doc.text("Digital Bom-Checklist Report", tableStartX + tableWidth / 2, startY + 6.2, { align: "center" });
 
-    // Row 2: Panel No value only - better vertical centering
     doc.rect(tableStartX, startY + rowHeight, tableWidth, rowHeight);
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(30, 30, 30);
     doc.text(panelNo, tableStartX + tableWidth / 2, startY + rowHeight + 6.2, { align: "center" });
 
-    // Row 3: DD NO value only - better vertical centering
     doc.rect(tableStartX, startY + rowHeight * 2, tableWidth, rowHeight);
-    doc.setFont("helvetica", "normal");
     doc.text(ddNo, tableStartX + tableWidth / 2, startY + rowHeight * 2 + 6.2, { align: "center" });
 
-    // Bottom border line - thicker and more prominent
     doc.setDrawColor(0, 51, 153);
     doc.setLineWidth(2);
     doc.line(10, startY + rowHeight * 3 + 0.5, pageWidth - 10, startY + rowHeight * 3 + 0.5);
   }
 
+  function addLogoFallback(doc, logoX, logoY) {
+    doc.setFontSize(11);
+    doc.setTextColor(0, 51, 153);
+    doc.setFont("helvetica", "bold");
+    doc.text("LARSEN &", logoX + 5, logoY + 10);
+    doc.text("TOUBRO", logoX + 5, logoY + 16);
+  }
+
   // ========== CUSTOM FOOTER FUNCTION ==========
-  function addFooter(pageNum, totalPages) {
+  function addFooter(pageNum, totalPagesCount) {
     const footerY = pageHeight - 22;
 
-    // Top border line for footer
     doc.setDrawColor(180, 180, 180);
     doc.setLineWidth(0.4);
     doc.line(10, footerY, pageWidth - 10, footerY);
 
-    // Inspector and Date/Time info
     const infoY = footerY + 5;
     
     doc.setFontSize(9);
@@ -158,7 +302,6 @@ function exportChecklistPDF() {
     doc.setTextColor(30, 30, 30);
     doc.text(inspectorSignature, 37, infoY + 5);
 
-    // Date and Time on the right
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(50, 50, 50);
@@ -174,7 +317,6 @@ function exportChecklistPDF() {
     doc.setTextColor(30, 30, 30);
     doc.text(timeStr, pageWidth - 42, infoY + 5);
 
-    // Inspection Summary - tighter spacing
     const summaryY = infoY + 11;
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
@@ -182,27 +324,24 @@ function exportChecklistPDF() {
     doc.text("Inspection Summary:", 15, summaryY);
     
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(16, 185, 129); // Green
-    doc.text("OK: " + String(okCount), 58, summaryY);
+    doc.setTextColor(16, 185, 129);
+    doc.text(`OK: ${okCount}`, 58, summaryY);
     
-    doc.setTextColor(239, 68, 68); // Red
-    doc.text("NOT OK: " + String(ngCount), 80, summaryY);
+    doc.setTextColor(239, 68, 68);
+    doc.text(`NOT OK: ${ngCount}`, 80, summaryY);
     
-    doc.setTextColor(99, 102, 241); // Blue
-    doc.text("Total: " + String(totalCount), 115, summaryY);
+    doc.setTextColor(99, 102, 241);
+    doc.text(`Total: ${totalCount}`, 115, summaryY);
 
-    // Page number at bottom - using manual string construction
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
-    doc.text("Page " + String(pageNum) + " of " + String(totalPages), pageWidth / 2, pageHeight - 5, { align: "center" });
+    doc.text(`Page ${pageNum} of ${totalPagesCount}`, pageWidth / 2, pageHeight - 5, { align: "center" });
   }
 
   // ========== GENERATE PDF ==========
-  // Add header to first page
   addHeader();
 
-  // Add table with custom settings
   doc.autoTable({
     startY: 40,
     margin: { top: 40, bottom: 40, left: 10, right: 10 },
@@ -228,24 +367,25 @@ function exportChecklistPDF() {
       3: { cellWidth: 'auto' }
     },
     didDrawPage: function(data) {
-      // Add header to every page
       if (data.pageNumber > 1) {
         addHeader();
       }
-      // Add footer to every page
       addFooter(data.pageNumber, doc.internal.getNumberOfPages());
     }
   });
 
-  // Update all footers with correct total page count
-  const totalPages = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
+  const totalPagesInDoc = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPagesInDoc; i++) {
     doc.setPage(i);
-    addFooter(i, totalPages);
+    addFooter(i, totalPagesInDoc);
   }
 
-  // Save with descriptive filename
-  doc.save(`PanelInspection_${panelNo}_${dateStr.replace(/\//g, "-")}.pdf`);
+  const filename = `PanelInspection_${panelNo}_${dateStr.replace(/\//g, "-")}.pdf`;
+  doc.save(filename);
+
+  // Clear unsaved changes flag after successful export
+  clearChecklistBackup();
+  console.log(`✅ PDF exported: ${filename}`);
 }
 
 /* ================= FILE NAME DISPLAY ================= */
@@ -254,9 +394,48 @@ document.getElementById("bomFile").addEventListener("change", e => {
     e.target.files[0]?.name || "No file chosen";
 });
 
-document.getElementById("gaFile").addEventListener("change", e => {
-  document.getElementById("gaFileName").textContent =
-    e.target.files[0]?.name || "No file chosen";
+document.getElementById("gaFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    document.getElementById("gaFileName").textContent = "No file chosen";
+    return;
+  }
+  
+  document.getElementById("gaFileName").textContent = file.name;
+  
+  // Check cache status
+  const cacheStatusDiv = document.getElementById("gaCacheStatus");
+  if (cacheStatusDiv) {
+    cacheStatusDiv.className = "ga-cache-status checking";
+    cacheStatusDiv.innerHTML = "🔍 Checking cache...";
+    
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      
+      const r = await fetch(`${API}/check_ga_cache`, {
+        method: "POST",
+        headers: { "X-Session-ID": SESSION_ID },
+        body: fd
+      });
+      
+      if (r.ok) {
+        const data = await r.json();
+        
+        if (data.cached) {
+          cacheStatusDiv.className = "ga-cache-status cached";
+          cacheStatusDiv.innerHTML = `✅ Previously processed (${data.pages} pages, ${data.detections} balloons)`;
+        } else {
+          cacheStatusDiv.className = "ga-cache-status new";
+          cacheStatusDiv.innerHTML = "ℹ️ New file - will process from scratch";
+        }
+      }
+    } catch (error) {
+      console.warn("Cache check failed:", error);
+      cacheStatusDiv.className = "";
+      cacheStatusDiv.innerHTML = "";
+    }
+  }
 });
 
 /* ================= MODAL HELPERS ================= */
@@ -266,15 +445,19 @@ function resetProgressModal(title, message = "") {
   document.getElementById("progressBar").innerText = "";
   document.getElementById("progressMessage").innerText = message;
 }
+
 function showProgressModal() {
   document.getElementById("progressModal").style.display = "flex";
 }
+
 function hideProgressModal() {
   document.getElementById("progressModal").style.display = "none";
 }
+
 function updateProgress(d) {
-  document.getElementById("progressBar").style.width = d.progress + "%";
-  document.getElementById("progressBar").innerText = Math.round(d.progress) + "%";
+  const progress = Math.round(d.progress);
+  document.getElementById("progressBar").style.width = `${progress}%`;
+  document.getElementById("progressBar").innerText = `${progress}%`;
   document.getElementById("progressMessage").innerText = d.message || "";
 }
 
@@ -290,16 +473,34 @@ async function uploadBOM() {
     const fd = new FormData();
     fd.append("file", file);
 
-    await fetch(`${API}/upload/bom`, { method: "POST", body: fd });
-    const r = await fetch(`${API}/process/bom?filename=${file.name}`, {
-      method: "POST"
+    await fetch(`${API}/upload/bom`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      },
+      body: fd
     });
+    
+    const r = await fetch(`${API}/process/bom?filename=${file.name}`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      }
+    });
+
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
 
     checklistData = await r.json();
     renderChecklist();
     updateStats();
-  } catch {
-    alert("Error generating BOM checklist");
+    hasUnsavedChanges = false;
+    
+    console.log(`✅ Loaded ${checklistData.length} BOM items`);
+  } catch (error) {
+    console.error("BOM upload error:", error);
+    alert(`Error generating BOM checklist: ${error.message}`);
   } finally {
     hideProgressModal();
   }
@@ -312,45 +513,57 @@ function renderChecklist() {
 
   checklistData.forEach((item, index) => {
     const tr = document.createElement("tr");
-tr.innerHTML = `
-  <td>${item["FIND NUMBER"]}</td>
-  <td>${item["PART DESCRIPTION"]}</td>
-  <td>
-    <select class="status-select" data-index="${index}">
-      <option value="">-</option>
-      <option value="OK">OK</option>
-      <option value="NOT OK">NOT OK</option>
-    </select>
-  </td>
-  <td>
-    <input class="remarks-input" data-index="${index}" placeholder="Remarks">
-  </td>
-  <td>
-    <button class="scan-btn" data-index="${index}">📷 Scan</button>
-    <input 
-      type="file"
-      accept="image/*"
-      capture="environment"
-      class="scan-input"
-      data-index="${index}"
-      style="display:none"
-    />
-  </td>
-`;
-
+    
+    const findNumber = sanitizeHTML(item["FIND NUMBER"] || "");
+    const partDesc = sanitizeHTML(item["PART DESCRIPTION"] || "");
+    
+    tr.innerHTML = `
+      <td>${findNumber}</td>
+      <td>${partDesc}</td>
+      <td>
+        <select class="status-select" data-index="${index}">
+          <option value="">-</option>
+          <option value="OK" ${item.status === "OK" ? "selected" : ""}>OK</option>
+          <option value="NOT OK" ${item.status === "NOT OK" ? "selected" : ""}>NOT OK</option>
+        </select>
+      </td>
+      <td>
+        <input class="remarks-input" data-index="${index}" placeholder="Remarks" value="${sanitizeHTML(item.remarks || "")}">
+      </td>
+      <td>
+        <button class="scan-btn" data-index="${index}">📷 Scan</button>
+        <input 
+          type="file"
+          accept="image/*"
+          capture="environment"
+          class="scan-input"
+          data-index="${index}"
+          style="display:none"
+        />
+      </td>
+    `;
 
     tr.onclick = e => {
-  if (
-    e.target.tagName === "SELECT" ||
-    e.target.tagName === "INPUT" ||
-    e.target.classList.contains("scan-btn")
-  ) return;
+      if (
+        e.target.tagName === "SELECT" ||
+        e.target.tagName === "INPUT" ||
+        e.target.classList.contains("scan-btn")
+      ) return;
 
-  document.querySelectorAll("#checklistBody tr").forEach(r => r.classList.remove("selected"));
-  tr.classList.add("selected");
-  loadDetails(item["FIND NUMBER"]);
-};
+      document.querySelectorAll("#checklistBody tr").forEach(r => r.classList.remove("selected"));
+      tr.classList.add("selected");
+      loadDetails(item["FIND NUMBER"]);
+    };
 
+    tr.setAttribute("tabindex", "0");
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        if (!e.target.matches("select, input, button")) {
+          e.preventDefault();
+          tr.click();
+        }
+      }
+    });
 
     body.appendChild(tr);
   });
@@ -359,14 +572,33 @@ tr.innerHTML = `
     s.addEventListener("change", e => {
       checklistData[e.target.dataset.index].status = e.target.value;
       updateStats();
+      hasUnsavedChanges = true;
+      saveChecklistBackup();
     })
   );
 
   document.querySelectorAll(".remarks-input").forEach(i =>
-    i.addEventListener("input", e => {
+    i.addEventListener("input", debounce(e => {
       checklistData[e.target.dataset.index].remarks = e.target.value;
-    })
+      hasUnsavedChanges = true;
+      saveChecklistBackup();
+    }, 500))
   );
+}
+
+/* ================= UTILITY FUNCTIONS ================= */
+function sanitizeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
 }
 
 /* ================= STATS ================= */
@@ -384,7 +616,16 @@ async function loadDetails(findNumber) {
   body.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
 
   try {
-    const r = await fetch(`${API}/bom/details/${encodeURIComponent(findNumber)}`);
+    const r = await fetch(`${API}/bom/details/${encodeURIComponent(findNumber)}`, {
+      headers: {
+        "X-Session-ID": SESSION_ID
+      }
+    });
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`);
+    }
+    
     const d = await r.json();
     body.innerHTML = "";
 
@@ -395,10 +636,11 @@ async function loadDetails(findNumber) {
 
     Object.entries(d).forEach(([k, v]) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
+      tr.innerHTML = `<td>${sanitizeHTML(k)}</td><td>${sanitizeHTML(v)}</td>`;
       body.appendChild(tr);
     });
-  } catch {
+  } catch (error) {
+    console.error("Error loading details:", error);
     body.innerHTML = `<tr><td colspan="2">Error loading details</td></tr>`;
   }
 
@@ -436,36 +678,358 @@ function showNotification(message, type = "info") {
   const notification = document.createElement("div");
   notification.id = "gaNotification";
   notification.className = `ga-notification ${type}`;
+  
+  const icons = {
+    info: "ℹ️",
+    success: "✅",
+    warning: "⚠️",
+    error: "❌"
+  };
+  
+  const icon = icons[type] || icons.info;
+  
   notification.innerHTML = `
-    <span>${message}</span>
+    <span>${icon} ${sanitizeHTML(message)}</span>
     <button onclick="this.parentElement.remove()">×</button>
   `;
 
   const gaContainer = document.getElementById("gaContainer");
   if (gaContainer) {
     gaContainer.appendChild(notification);
-    setTimeout(() => notification.remove(), 8000);
+    
+    const timeout = type === "success" ? 5000 : 8000;
+    setTimeout(() => {
+      if (notification.parentElement) {
+        notification.remove();
+      }
+    }, timeout);
   }
 }
 
-/* ================= GA UPLOAD ================= */
+/* ================= GA UPLOAD WITH CACHE + RESUME ================= */
 async function uploadGA() {
   const file = document.getElementById("gaFile").files[0];
   if (!file) return alert("Select GA file");
 
-  resetGAViewer();
-  resetProgressModal("⚙️ Processing GA", "Starting GA...");
-  showProgressModal();
-
-  const fd = new FormData();
-  fd.append("file", file);
-
-  const r = await fetch(`${API}/upload/ga`, { method: "POST", body: fd });
-  const d = await r.json();
-
-  localStorage.setItem("ga_job_id", d.job_id);
-  pollJob(d.job_id);
+  console.log("🔍 Checking GA status...");
+  
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    
+    const r = await fetch(`${API}/upload/ga`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      },
+      body: fd
+    });
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    
+    const data = await r.json();
+    
+    // Case 1: Complete cache exists
+    if (data.status === "cached") {
+      console.log("✅ Complete cache found");
+      hideProgressModal();
+      
+      await loadBalloonMapping();
+      await loadGA();
+      
+      showNotification(
+        `Loaded cached results: ${data.detections} balloons detected on ${data.pages} pages`,
+        "success"
+      );
+      
+      return;
+    }
+    
+    // Case 2: Partial progress exists (RESUMABLE!)
+    if (data.status === "resumable") {
+      console.log("📋 Partial progress found!");
+      
+      const progress = data.progress_data;
+      
+      // Show resume dialog
+      const resumeChoice = await showResumeDialog(progress);
+      
+      if (resumeChoice === "resume") {
+        await resumeGAProcessing(file, data.file_hash);
+      } else if (resumeChoice === "fresh") {
+        await startFreshGAProcessing(file, data.file_hash);
+      }
+      
+      return;
+    }
+    
+    // Case 3: New file, start processing
+    if (data.job_id) {
+      console.log("🆕 Starting new GA processing");
+      resetGAViewer();
+      resetProgressModal("⚙️ Processing GA", "Starting GA...");
+      showProgressModal();
+      
+      localStorage.setItem("ga_job_id", data.job_id);
+      pollJob(data.job_id);
+      
+      return;
+    }
+    
+  } catch (error) {
+    console.error("GA upload error:", error);
+    hideProgressModal();
+    alert(`Error uploading GA: ${error.message}`);
+  }
 }
+
+
+/* ================= RESUME DIALOG ================= */
+async function showResumeDialog(progressData) {
+  return new Promise((resolve) => {
+    const dialogHTML = `
+      <div id="resumeDialog" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      ">
+        <div style="
+          background: white;
+          border-radius: 12px;
+          padding: 30px;
+          max-width: 500px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        ">
+          <h2 style="margin: 0 0 20px 0; color: #333; font-size: 24px;">
+            📋 Previous Processing Found
+          </h2>
+          
+          <div style="
+            background: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+          ">
+            <p style="margin: 5px 0; font-size: 16px;">
+              <strong>Progress:</strong> ${progressData.processed_pages}/${progressData.total_pages} pages (${progressData.progress_percent}%)
+            </p>
+            <p style="margin: 5px 0; font-size: 16px;">
+              <strong>Balloons found so far:</strong> ${progressData.balloons_so_far}
+            </p>
+            <p style="margin: 5px 0; font-size: 14px; color: #666;">
+              <strong>Last updated:</strong> ${new Date(progressData.last_update).toLocaleString()}
+            </p>
+          </div>
+          
+          <p style="color: #666; margin: 20px 0; font-size: 15px;">
+            Would you like to continue from where you left off, or start fresh?
+          </p>
+          
+          <div style="display: flex; gap: 10px; margin-top: 25px;">
+            <button id="resumeBtn" style="
+              flex: 1;
+              padding: 12px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: transform 0.2s;
+            ">
+              ▶️ Continue (${progressData.remaining_pages} pages left)
+            </button>
+            
+            <button id="freshBtn" style="
+              flex: 1;
+              padding: 12px;
+              background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: transform 0.2s;
+            ">
+              🔄 Start Fresh
+            </button>
+            
+            <button id="cancelBtn" style="
+              padding: 12px 20px;
+              background: #e5e7eb;
+              color: #374151;
+              border: none;
+              border-radius: 6px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: transform 0.2s;
+            ">
+              ❌
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', dialogHTML);
+    
+    const resumeBtn = document.getElementById("resumeBtn");
+    const freshBtn = document.getElementById("freshBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    
+    resumeBtn.onmouseover = () => resumeBtn.style.transform = "scale(1.05)";
+    resumeBtn.onmouseout = () => resumeBtn.style.transform = "scale(1)";
+    freshBtn.onmouseover = () => freshBtn.style.transform = "scale(1.05)";
+    freshBtn.onmouseout = () => freshBtn.style.transform = "scale(1)";
+    cancelBtn.onmouseover = () => cancelBtn.style.transform = "scale(1.05)";
+    cancelBtn.onmouseout = () => cancelBtn.style.transform = "scale(1)";
+    
+    resumeBtn.onclick = () => {
+      document.getElementById("resumeDialog").remove();
+      resolve("resume");
+    };
+    
+    freshBtn.onclick = () => {
+      document.getElementById("resumeDialog").remove();
+      resolve("fresh");
+    };
+    
+    cancelBtn.onclick = () => {
+      document.getElementById("resumeDialog").remove();
+      resolve(null);
+    };
+  });
+}
+
+
+/* ================= RESUME GA PROCESSING ================= */
+async function resumeGAProcessing(file, fileHash) {
+  console.log("▶️ Resuming GA processing...");
+  
+  resetGAViewer();
+  resetProgressModal("▶️ Resuming GA", "Continuing from checkpoint...");
+  showProgressModal();
+  
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    
+    const r = await fetch(`${API}/resume_ga`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      },
+      body: fd
+    });
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    
+    const data = await r.json();
+    
+    localStorage.setItem("ga_job_id", data.job_id);
+    console.log(`🚀 Resume job started: ${data.job_id}`);
+    console.log(`   From page: ${data.from_page}/${data.total_pages}`);
+    
+    pollJob(data.job_id);
+    
+  } catch (error) {
+    console.error("Resume error:", error);
+    hideProgressModal();
+    alert(`Error resuming GA: ${error.message}`);
+  }
+}
+
+
+/* ================= START FRESH GA PROCESSING ================= */
+async function startFreshGAProcessing(file, fileHash) {
+  console.log("🔄 Starting fresh GA processing...");
+  
+  // Clear progress first
+  try {
+    await fetch(`${API}/clear_ga_progress?file_hash=${fileHash}`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      }
+    });
+    console.log("🗑️ Progress cleared");
+  } catch (error) {
+    console.warn("Warning: Could not clear progress:", error);
+  }
+  
+  resetGAViewer();
+  resetProgressModal("⚙️ Processing GA", "Starting from beginning...");
+  showProgressModal();
+  
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    
+    const r = await fetch(`${API}/upload/ga?force=true`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      },
+      body: fd
+    });
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    
+    const data = await r.json();
+    
+    localStorage.setItem("ga_job_id", data.job_id);
+    console.log(`🚀 Fresh job started: ${data.job_id}`);
+    
+    pollJob(data.job_id);
+    
+  } catch (error) {
+    console.error("Fresh start error:", error);
+    hideProgressModal();
+    alert(`Error starting fresh: ${error.message}`);
+  }
+}
+
+
+/* ================= FORCE REPROCESS GA ================= */
+async function forceReprocessGA() {
+  const file = document.getElementById("gaFile").files[0];
+  if (!file) return alert("Select GA file first");
+
+  const confirmed = window.confirm(
+    "⚠️ Force Reprocess?\n\n" +
+    "This will discard any progress and process the entire GA from scratch.\n" +
+    "This will take 1-3 minutes.\n\n" +
+    "Continue?"
+  );
+  
+  if (!confirmed) return;
+
+  // Calculate file hash and start fresh
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('MD5', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  await startFreshGAProcessing(file, fileHash);
+}
+
 
 /* ================= RESET GA VIEWER ================= */
 function resetGAViewer() {
@@ -489,37 +1053,76 @@ function resetGAViewer() {
 }
 
 /* ================= POLLING ================= */
+function stopPolling() {
+  if (gaPollTimer) {
+    clearInterval(gaPollTimer);
+    gaPollTimer = null;
+  }
+  isProcessingCompletion = false;
+}
+
 function pollJob(id) {
-  if (gaPollTimer) clearInterval(gaPollTimer);
+  stopPolling();
 
   gaPollTimer = setInterval(async () => {
+    if (isProcessingCompletion) return;
+
     try {
-      const r = await fetch(`${API}/job/status/${id}`);
+      const r = await fetch(`${API}/job/status/${id}`, {
+        headers: {
+          "X-Session-ID": SESSION_ID
+        }
+      });
+      
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}`);
+      }
+      
       const s = await r.json();
       updateProgress(s);
 
       if (s.status === "complete") {
-        clearInterval(gaPollTimer);
+        isProcessingCompletion = true;
+        stopPolling();
         localStorage.removeItem("ga_job_id");
-        await loadBalloonMapping();
-        await loadGA();
-        hideProgressModal();
+        
+        try {
+          await loadBalloonMapping();
+          await loadGA();
+          console.log("✅ GA processing complete");
+        } catch (error) {
+          console.error("Error loading GA results:", error);
+          alert("Error loading GA results. Please refresh and try again.");
+        } finally {
+          hideProgressModal();
+          isProcessingCompletion = false;
+        }
       }
 
-      if (s.status === "cancelled" || s.status === "error") {
-        clearInterval(gaPollTimer);
+      if (s.status === "cancelled") {
+        stopPolling();
         localStorage.removeItem("ga_job_id");
         hideProgressModal();
-        alert(`GA processing ${s.status}`);
+        console.log("⛔ GA processing cancelled");
       }
-    } catch {
-      clearInterval(gaPollTimer);
+
+      if (s.status === "error") {
+        stopPolling();
+        localStorage.removeItem("ga_job_id");
+        hideProgressModal();
+        alert(`GA processing error: ${s.message || "Unknown error"}`);
+      }
+
+    } catch (error) {
+      console.error("Polling error:", error);
+      stopPolling();
       hideProgressModal();
+      alert("Lost connection to server. Please refresh and try again.");
     }
   }, 500);
 }
 
-/* ================= CANCEL ================= */
+/* ================= CANCEL GA PROCESSING ================= */
 async function cancelGAProcessing() {
   const jobId = localStorage.getItem("ga_job_id");
   if (!jobId) {
@@ -527,67 +1130,94 @@ async function cancelGAProcessing() {
     return;
   }
 
+  console.log("🛑 User requested cancellation for job:", jobId);
+
   try {
-    await fetch(`${API}/job/cancel/${jobId}`, { method: "POST" });
-    localStorage.removeItem("ga_job_id");
-    if (gaPollTimer) clearInterval(gaPollTimer);
-    hideProgressModal();
-    alert("GA processing cancelled");
+    const r = await fetch(`${API}/job/cancel/${jobId}`, {
+      method: "POST",
+      headers: {
+        "X-Session-ID": SESSION_ID
+      }
+    });
+    
+    if (r.ok) {
+      localStorage.removeItem("ga_job_id");
+      stopPolling();
+      hideProgressModal();
+      alert("GA processing cancelled successfully");
+      console.log("✅ Job cancelled:", jobId);
+    } else {
+      throw new Error(`HTTP ${r.status}`);
+    }
   } catch (e) {
     console.error("Error cancelling job:", e);
+    alert("Failed to cancel processing. Please try again.");
   }
 }
-
-window.addEventListener("beforeunload", () => {
-  const jobId = localStorage.getItem("ga_job_id");
-  if (jobId) {
-    navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
-    localStorage.removeItem("ga_job_id");
-  }
-});
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    const jobId = localStorage.getItem("ga_job_id");
-    if (jobId) {
-      fetch(`${API}/job/cancel/${jobId}`, {
-        method: "POST",
-        keepalive: true
-      }).catch(() => {
-        navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
-      });
-    }
-  }
-});
-
-window.addEventListener("pagehide", () => {
-  const jobId = localStorage.getItem("ga_job_id");
-  if (jobId) {
-    navigator.sendBeacon(`${API}/job/cancel/${jobId}`);
-    localStorage.removeItem("ga_job_id");
-  }
-});
 
 /* ================= BALLOONS ================= */
 async function loadBalloonMapping() {
-  const r = await fetch(`${API}/balloon_results`);
-  const d = await r.json();
-  balloonMapping = {};
-  d.forEach(b => {
-    const k = String(b.balloon_number);
-    if (!balloonMapping[k]) balloonMapping[k] = [];
-    balloonMapping[k].push(b);
-  });
+  try {
+    const r = await fetch(`${API}/balloon_results`, {
+      headers: {
+        "X-Session-ID": SESSION_ID
+      }
+    });
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`);
+    }
+    
+    const d = await r.json();
+    
+    if (!Array.isArray(d)) {
+      console.error("Invalid balloon data:", d);
+      return;
+    }
+    
+    balloonMapping = {};
+    d.forEach(b => {
+      if (!b.balloon_number || !b.page || !b.bbox) {
+        console.warn("Invalid balloon:", b);
+        return;
+      }
+      
+      const k = String(b.balloon_number);
+      if (!balloonMapping[k]) balloonMapping[k] = [];
+      balloonMapping[k].push(b);
+    });
+    
+    console.log(`✅ Loaded ${Object.keys(balloonMapping).length} unique balloons`);
+  } catch (error) {
+    console.error("Error loading balloon mapping:", error);
+    throw error;
+  }
 }
 
 async function loadGA() {
-  const r = await fetch(`${API}/ga_pages`);
-  const d = await r.json();
-  totalPages = d.pages;
-  currentPage = 1;
-  gaLoaded = true;
-  document.getElementById("gaPlaceholder").style.display = "none";
-  renderPage(currentPage);
+  try {
+    const r = await fetch(`${API}/ga_pages`, {
+      headers: {
+        "X-Session-ID": SESSION_ID
+      }
+    });
+    
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`);
+    }
+    
+    const d = await r.json();
+    totalPages = d.pages;
+    currentPage = 1;
+    gaLoaded = true;
+    document.getElementById("gaPlaceholder").style.display = "none";
+    await renderPage(currentPage);
+    
+    console.log(`✅ Loaded GA with ${totalPages} pages`);
+  } catch (error) {
+    console.error("Error loading GA:", error);
+    throw error;
+  }
 }
 
 /* ================= RENDER PAGE ================= */
@@ -597,16 +1227,20 @@ async function renderPage(p) {
   const layer = document.getElementById("highlightLayer");
   layer.innerHTML = "";
 
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     img.onload = () => {
       imgW = img.naturalWidth;
       imgH = img.naturalHeight;
 
-      const containerW = document.getElementById("gaContainer").clientWidth;
-      currentScale = (containerW - 40) / imgW;
+      if (pageZoomLevels[p]) {
+        currentScale = pageZoomLevels[p];
+      } else {
+        const containerW = document.getElementById("gaContainer").clientWidth;
+        currentScale = (containerW - 40) / imgW;
+      }
 
-      img.style.width = imgW * currentScale + "px";
-      img.style.height = imgH * currentScale + "px";
+      img.style.width = `${imgW * currentScale}px`;
+      img.style.height = `${imgH * currentScale}px`;
       inner.style.width = img.style.width;
       inner.style.height = img.style.height;
       layer.style.width = img.style.width;
@@ -615,7 +1249,16 @@ async function renderPage(p) {
       document.getElementById("pageInfo").innerText = `Page ${currentPage} / ${totalPages}`;
       resolve();
     };
-    img.src = `${API}/ga_image/page_${p}.jpg`;
+
+    img.onerror = () => {
+      console.error(`Failed to load page ${p}`);
+      document.getElementById("gaPlaceholder").style.display = "flex";
+      document.getElementById("gaPlaceholder").textContent = 
+        `⚠️ Failed to load page ${p}`;
+      reject(new Error(`Image load failed: page_${p}.jpg`));
+    };
+
+    img.src = `${API}/ga_image/page_${p}.jpg?session_id=${SESSION_ID}`;
   });
 }
 
@@ -624,10 +1267,10 @@ function highlightBalloon(b) {
   const box = document.createElement("div");
   box.className = "highlight-box";
   box.dataset.balloonNumber = b.balloon_number;
-  box.style.left = b.bbox.x1 * currentScale + "px";
-  box.style.top = b.bbox.y1 * currentScale + "px";
-  box.style.width = (b.bbox.x2 - b.bbox.x1) * currentScale + "px";
-  box.style.height = (b.bbox.y2 - b.bbox.y1) * currentScale + "px";
+  box.style.left = `${b.bbox.x1 * currentScale}px`;
+  box.style.top = `${b.bbox.y1 * currentScale}px`;
+  box.style.width = `${(b.bbox.x2 - b.bbox.x1) * currentScale}px`;
+  box.style.height = `${(b.bbox.y2 - b.bbox.y1) * currentScale}px`;
 
   const layer = document.getElementById("highlightLayer");
   layer.innerHTML = "";
@@ -638,13 +1281,21 @@ function highlightBalloon(b) {
 async function prevPage() {
   if (!gaLoaded || currentPage <= 1) return;
   currentPage--;
-  await renderPage(currentPage);
+  try {
+    await renderPage(currentPage);
+  } catch (error) {
+    console.error("Error rendering page:", error);
+  }
 }
 
 async function nextPage() {
   if (!gaLoaded || currentPage >= totalPages) return;
   currentPage++;
-  await renderPage(currentPage);
+  try {
+    await renderPage(currentPage);
+  } catch (error) {
+    console.error("Error rendering page:", error);
+  }
 }
 
 function zoomIn() {
@@ -678,12 +1329,14 @@ function applyZoom() {
   const newW = imgW * currentScale;
   const newH = imgH * currentScale;
 
-  img.style.width = newW + "px";
-  img.style.height = newH + "px";
-  inner.style.width = newW + "px";
-  inner.style.height = newH + "px";
-  layer.style.width = newW + "px";
-  layer.style.height = newH + "px";
+  img.style.width = `${newW}px`;
+  img.style.height = `${newH}px`;
+  inner.style.width = `${newW}px`;
+  inner.style.height = `${newH}px`;
+  layer.style.width = `${newW}px`;
+  layer.style.height = `${newH}px`;
+
+  pageZoomLevels[currentPage] = currentScale;
 
   const existingHighlight = layer.querySelector('.highlight-box');
   if (existingHighlight) {
@@ -694,30 +1347,29 @@ function applyZoom() {
         const currentEntry = entries.find(e => e.page === currentPage);
         if (currentEntry) {
           highlightBalloon(currentEntry);
+        } else {
+          layer.innerHTML = "";
         }
       }
     }
   }
 }
 
-
+/* ================= CAMERA FUNCTIONALITY ================= */
 document.addEventListener("click", e => {
   if (!e.target.classList.contains("scan-btn")) return;
 
-  e.stopPropagation(); // 🔒 prevent row click
+  e.stopPropagation();
 
   const index = e.target.dataset.index;
   
-  // Detect if mobile/tablet or desktop
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 
                    ('ontouchstart' in window);
   
   if (isMobile) {
-    // Use native file input for mobile - more reliable
     const input = document.querySelector(`.scan-input[data-index="${index}"]`);
     if (input) input.click();
   } else {
-    // Use webcam API for desktop/laptop
     openCamera(index);
   }
 });
@@ -735,8 +1387,8 @@ async function openCamera() {
 
     document.getElementById("cameraModal").style.display = "flex";
   } catch (err) {
+    console.error("Camera error:", err);
     alert("Camera access failed or not allowed");
-    console.error(err);
   }
 }
 
@@ -750,7 +1402,6 @@ function capturePhoto() {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0);
 
-  // ⚠️ Not storing anywhere (as per requirement)
   closeCamera();
 }
 
@@ -761,3 +1412,8 @@ function closeCamera() {
   }
   document.getElementById("cameraModal").style.display = "none";
 }
+
+// ============================================================================
+// END OF COMPLETE SCRIPT.JS - ALL FEATURES INTEGRATED
+// Cache + Resume + Tab Switch Fix + Multi-User Support + Keyboard Shortcuts
+// ============================================================================

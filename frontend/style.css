@@ -8,10 +8,9 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
-  padding: 12px 12px 4px 12px; /* bottom padding reduced */
+  padding: 12px 12px 4px 12px;
 }
 
-/* ========== HEADER ========== */
 /* ========== HEADER ========== */
 .header {
   display: grid;
@@ -33,7 +32,6 @@ body {
   display: flex;
   justify-content: flex-end;
 }
-
 
 .header-btn {
   padding: 8px 16px;
@@ -121,7 +119,7 @@ body {
 }
 
 .inline-input-row .file-input-wrapper {
-  margin-bottom: 0;   /* prevents height increase */
+  margin-bottom: 0;
 }
 
 .inline-input-row .remarks-input {
@@ -176,6 +174,78 @@ body {
 }
 
 .btn-primary:active {
+  transform: translateY(0);
+}
+
+/* ========== ✅ NEW: GA CACHE STATUS ========== */
+.ga-cache-status {
+  min-height: 24px;
+  padding: 6px 12px;
+  margin: 8px 0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+}
+
+.ga-cache-status:empty {
+  display: none;
+}
+
+.ga-cache-status.cached {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+
+.ga-cache-status.new {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  border: 1px solid #a5b4fc;
+  color: #3730a3;
+}
+
+.ga-cache-status.checking {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid #fcd34d;
+  color: #92400e;
+}
+
+/* ========== ✅ NEW: GA BUTTON GROUP ========== */
+.ga-button-group {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.ga-button-group .btn-primary {
+  flex: 1;
+}
+
+.btn-force-reprocess {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  white-space: nowrap;
+}
+
+.btn-force-reprocess:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+
+.btn-force-reprocess:active {
   transform: translateY(0);
 }
 
@@ -418,7 +488,7 @@ body {
 }
 
 .ga-upload-section {
-  padding: 4px 10px;
+  padding: 10px;
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   border-bottom: 1px solid #e2e8f0;
 }
@@ -437,11 +507,11 @@ body {
   flex-wrap: nowrap;
   flex-shrink: 0;
   overflow-x: auto;
-  min-height: 32px; 
+  min-height: 32px;
 }
 
 .ctrl-btn {
-  padding: 4px 8px;        /* 🔥 reduced */
+  padding: 4px 8px;
   font-size: 11px;
   line-height: 1.2;
   background: white;
@@ -459,7 +529,7 @@ body {
 }
 
 .page-info {
-  padding: 4px 8px;        /* 🔥 reduced */
+  padding: 4px 8px;
   font-size: 11px;
   line-height: 1.2;
   background: white;
@@ -474,7 +544,7 @@ body {
   font-weight: bold;
 }
 
-/* ========== GA CONTAINER (LOGIC PRESERVED) ========== */
+/* ========== GA CONTAINER ========== */
 #gaContainer {
   position: relative;
   flex: 1 1 auto;
@@ -502,13 +572,26 @@ body {
 .highlight-box {
   position: absolute;
   border: 3px solid #ff0000;
-  box-shadow: 0 0 12px #ff0000;
-  animation: pulse 2s infinite;
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.5);
+  animation: pulse 1s infinite;
+  pointer-events: none;
+  z-index: 1000;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .ga-placeholder {
@@ -520,7 +603,82 @@ body {
   color: #a0aec0;
   font-size: 14px;
 }
-/* ========== END GA CONTAINER ========== */
+
+/* ========== ✅ ENHANCED: GA NOTIFICATIONS ========== */
+.ga-notification {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  max-width: 500px;
+  animation: slideDown 0.3s ease-out;
+}
+
+.ga-notification.info {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-left: 4px solid #3b82f6;
+}
+
+.ga-notification.success {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border-left: 4px solid #10b981;
+}
+
+.ga-notification.warning {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-left: 4px solid #f59e0b;
+}
+
+.ga-notification.error {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border-left: 4px solid #ef4444;
+}
+
+.ga-notification span {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.ga-notification button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.ga-notification button:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
 
 /* ========== MODAL ========== */
 .modal {
@@ -602,6 +760,45 @@ body {
   font-size: 13px;
 }
 
+.btn-cancel {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.btn-cancel:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-cancel:active {
+  transform: translateY(0);
+}
+
+/* ========== SCAN BUTTON ========== */
+.scan-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scan-btn:hover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+}
+
 /* ========== SCROLLBAR ========== */
 ::-webkit-scrollbar {
   width: 6px;
@@ -619,99 +816,4 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-}
-/* GA Notification Styles */
-.ga-notification {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  background: white;
-  padding: 12px 20px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  max-width: 500px;
-  animation: slideDown 0.3s ease-out;
-}
-
-.ga-notification.info {
-  border-left: 4px solid #667eea;
-  background: #f0f4ff;
-}
-
-.ga-notification.warning {
-  border-left: 4px solid #f59e0b;
-  background: #fffbeb;
-}
-
-.ga-notification span {
-  flex: 1;
-  font-size: 14px;
-  color: #333;
-}
-
-.ga-notification button {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: #666;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.ga-notification button:hover {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.btn-cancel {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn-cancel:hover {
-  background: #dc2626;
-}
-
-.scan-btn {
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  background: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.scan-btn:hover {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-color: transparent;
 }
