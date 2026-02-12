@@ -1,8 +1,15 @@
-fastapi
-uvicorn
-pandas
-pdfplumber
-pytesseract
-opencv-python
-python-multipart
-
+pip install qwen-vl-utils
+pip install pyvips
+pip install einops
+pip install transformers accelerate
+pip install ultralytics opencv-python pdf2image torch pillow
+# For LLaVA (if you want more accuracy + have GPU)
+pip install git+https://github.com/haotian-liu/LLaVA.git
+pip install fastapi
+pip install uvicorn
+pip install pandas
+pip install pdfplumber
+pip install pytesseract
+pip install opencv-python
+pip install python-multipart
+sudo apt install -y libvips libvips-dev
