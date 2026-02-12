@@ -13,3 +13,9 @@ pip install pytesseract
 pip install opencv-python
 pip install python-multipart
 sudo apt install -y libvips libvips-dev
+
+file path and running commands: (to run this application in local computer run this below commands)
+/Bom-Driven-Checklist-with-GA-navigation/backend$
+run this command : uvicorn main:app --reload
+~/Bom-Driven-Checklist-with-GA-navigation/frontend$ 
+run this command :python3 -m http.server 5500
