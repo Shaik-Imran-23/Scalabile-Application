@@ -25,7 +25,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # ===============================
 # CONFIGURATION
 # ===============================
-YOLO_MODEL_PATH = "/home/imran/Bom-Driven-Checklist-with-GA-navigation/training_model/runs/detect/ga_find_circle/weights/best.pt"
+YOLO_MODEL_PATH = "/home/imran/Bom-Driven-Checklist-with-GA-navigation/backend/training_model/runs/detect/ga_find_circle/weights/best.pt"
 
 MODEL_ID = "vikhyatk/moondream2"
 MODEL_REVISION = "2025-01-09"
